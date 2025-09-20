@@ -44,11 +44,20 @@ export default async function RolePage() {
     redirect("/login");
   }
 
-  const { data: profile } = await supabase
+  const { data: profileData } = await supabase
     .from("user_profile")
-    .select("role, school(name)")
+    .select("role, school:school_id(name)")
     .eq("id", session.user.id)
     .maybeSingle();
+
+  const profile = profileData
+    ? {
+        ...profileData,
+        school: Array.isArray(profileData.school)
+          ? profileData.school[0] ?? null
+          : profileData.school ?? null
+      }
+    : null;
 
   const descriptor = roleDescriptions[profile?.role ?? ""];
 
