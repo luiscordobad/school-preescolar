@@ -28,6 +28,10 @@ export function getAttendanceDebugState(): AttendanceDebugState {
   return state;
 }
 
+export function getAttendanceDebugServerState(): AttendanceDebugState {
+  return defaultState;
+}
+
 export function subscribeAttendanceDebugState(listener: () => void): () => void {
   listeners.add(listener);
   return () => {

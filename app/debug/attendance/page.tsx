@@ -4,12 +4,17 @@ export const dynamic = "force-dynamic";
 
 import { useSyncExternalStore } from "react";
 import {
+  getAttendanceDebugServerState,
   getAttendanceDebugState,
   subscribeAttendanceDebugState,
 } from "@/lib/attendance/debug-store";
 
 export default function DebugAttendancePage() {
-  const debugState = useSyncExternalStore(subscribeAttendanceDebugState, getAttendanceDebugState);
+  const debugState = useSyncExternalStore(
+    subscribeAttendanceDebugState,
+    getAttendanceDebugState,
+    getAttendanceDebugServerState,
+  );
 
   const payload = {
     user: debugState.user,
