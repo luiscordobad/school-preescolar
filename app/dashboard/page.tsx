@@ -10,6 +10,14 @@ type ProfileQueryResult = ProfileRow & {
 type NormalizedProfile = ProfileRow & {
   school: { name: string } | null;
 };
+type ClassroomSummary = Pick<
+  Database["public"]["Tables"]["classroom"]["Row"],
+  "id" | "name"
+>;
+type StudentSummary = Pick<
+  Database["public"]["Tables"]["student"]["Row"],
+  "id" | "first_name" | "last_name"
+>;
 
 export default async function DashboardPage() {
   const supabase = createServerSupabaseClient();
@@ -43,15 +51,19 @@ export default async function DashboardPage() {
       }
     : null;
 
-  const { data: classrooms } = await supabase
+  const { data: classroomData } = await supabase
     .from("classroom")
     .select("id, name")
     .order("name", { ascending: true });
 
-  const { data: students } = await supabase
+  const classrooms: ClassroomSummary[] = classroomData ?? [];
+
+  const { data: studentData } = await supabase
     .from("student")
     .select("id, first_name, last_name")
     .order("first_name", { ascending: true });
+
+  const students: StudentSummary[] = studentData ?? [];
 
   return (
     <main className="flex flex-1 flex-col gap-6">
@@ -80,7 +92,7 @@ export default async function DashboardPage() {
             Listado según tus permisos en Supabase.
           </p>
           <ul className="mt-4 space-y-2">
-            {classrooms?.length ? (
+            {classrooms.length ? (
               classrooms.map((classroom) => (
                 <li key={classroom.id} className="rounded border border-slate-100 px-3 py-2">
                   {classroom.name}
@@ -97,7 +109,7 @@ export default async function DashboardPage() {
             Visualización limitada por las políticas RLS configuradas.
           </p>
           <ul className="mt-4 space-y-2">
-            {students?.length ? (
+            {students.length ? (
               students.map((student) => (
                 <li key={student.id} className="rounded border border-slate-100 px-3 py-2">
                   {student.first_name} {student.last_name}
