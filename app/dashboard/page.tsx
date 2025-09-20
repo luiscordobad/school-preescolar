@@ -16,6 +16,25 @@ import type { Database } from "@/types/database";
 
 type AttendanceStatus = Database["public"]["Tables"]["attendance"]["Row"]["status"];
 
+type AttendanceSummaryRow = Pick<
+  Database["public"]["Tables"]["attendance"]["Row"],
+  "classroom_id" | "status"
+>;
+
+type LatestAttendanceSelectRow = Pick<
+  Database["public"]["Tables"]["attendance"]["Row"],
+  "id" | "date" | "status"
+> & {
+  classroom: { name: string | null } | null;
+  student: {
+    id: string;
+    school_id: string;
+    full_name: string | null;
+    first_name: string;
+    last_name: string;
+  } | null;
+};
+
 type DashboardProfileDetails = {
   display_name: string | null;
   school: { name: string } | null;
@@ -137,7 +156,8 @@ export default function DashboardPage() {
             .from("attendance")
             .select("classroom_id, status")
             .eq("date", today)
-            .in("classroom_id", classroomIds);
+            .in("classroom_id", classroomIds)
+            .returns<AttendanceSummaryRow[]>();
 
           if (attendanceError) {
             if (attendanceError.code !== "42P01") {
@@ -158,6 +178,7 @@ export default function DashboardPage() {
             }
 
             for (const row of attendanceRows) {
+              if (!row.classroom_id) continue;
               const summary = summaryMap.get(row.classroom_id);
               if (!summary) continue;
               if (row.status && summary.counts[row.status] !== undefined) {
@@ -176,7 +197,8 @@ export default function DashboardPage() {
               "id, date, status, classroom:classroom_id (name), student:student_id (id, school_id, full_name, first_name, last_name)",
             )
             .order("date", { ascending: false })
-            .limit(5);
+            .limit(5)
+            .returns<LatestAttendanceSelectRow[]>();
 
           if (latestError) {
             if (latestError.code !== "42P01") {
@@ -188,16 +210,8 @@ export default function DashboardPage() {
 
           if (latestRows) {
             const rows: LatestAttendanceRow[] = latestRows.map((row) => {
-              const classroomName = (row.classroom as { name: string } | null)?.name ?? "Sin salón";
-              const studentRecord = row.student as
-                | {
-                    id: string;
-                    school_id: string;
-                    full_name: string | null;
-                    first_name: string;
-                    last_name: string;
-                  }
-                | null;
+              const classroomName = row.classroom?.name ?? "Sin salón";
+              const studentRecord = row.student;
               const studentName = studentRecord
                 ? getStudentDisplayName({
                     id: studentRecord.id,
