@@ -19,11 +19,20 @@ export default async function DashboardPage() {
     redirect("/login");
   }
 
-  const { data: profile } = await supabase
+  const { data: profileData } = await supabase
     .from("user_profile")
     .select("id, display_name, role, school:school_id(name)")
     .eq("id", session.user.id)
     .maybeSingle();
+
+  const profile = profileData
+    ? {
+        ...profileData,
+        school: Array.isArray(profileData.school)
+          ? profileData.school[0] ?? null
+          : profileData.school ?? null
+      }
+    : null;
 
   const { data: classrooms } = await supabase
     .from("classroom")
