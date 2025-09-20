@@ -2,6 +2,7 @@
 
 import { Auth } from "@supabase/auth-ui-react";
 import { ThemeSupa } from "@supabase/auth-ui-shared";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClientSupabaseClient } from "@/lib/supabase/client";
@@ -38,6 +39,8 @@ export default function LoginPage() {
 
   const redirectTo = typeof window !== "undefined" ? `${window.location.origin}/dashboard` : undefined;
 
+  const authClient = supabase as unknown as SupabaseClient;
+
   return (
     <main className="mx-auto flex w-full max-w-lg flex-1 flex-col justify-center gap-6">
       <header className="text-center">
@@ -48,7 +51,7 @@ export default function LoginPage() {
       </header>
       <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
         <Auth
-          supabaseClient={supabase}
+          supabaseClient={authClient}
           appearance={{ theme: ThemeSupa }}
           providers={[]}
           redirectTo={redirectTo}
