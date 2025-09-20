@@ -9,16 +9,19 @@ Este repositorio incluye el MVP para registrar asistencia diaria por salón.
    - Copia el contenido de `supabase/attendance.sql` y ejecútalo en tu proyecto.
    - Esto creará la tabla `attendance`, los índices, el trigger de `updated_at` y las políticas RLS necesarias.
 
-2. **Asignar maestras a salones**
-   - Usa la tabla `teacher_classroom` para vincular perfiles de maestras con sus salones.
-   - Cada registro debe incluir `teacher_id` (id del `user_profile` de la maestra) y `classroom_id`.
-   - Recuerda que las maestras solo podrán tomar asistencia en los salones que tengan asignados.
+2. **Configurar docentes y matrículas**
+   - En `teacher_classroom` registra cada maestra con los salones que puede atender (`teacher_id` = id del `user_profile`, `classroom_id`).
+   - En `enrollment` inscribe a cada estudiante en su salón (`student_id`, `classroom_id`, `school_id`). Estas filas son las que usa la app para mostrar a los alumnos.
 
-3. **Probar la interfaz**
+3. **Campos esperados en `student`**
+   - La interfaz lee `full_name` si existe y, en caso contrario, concatena `first_name` y `last_name`.
+   - Asegúrate de capturar también `date_of_birth` cuando esté disponible; se muestra en la vista de asistencia.
+
+4. **Probar la interfaz**
    - Inicia la aplicación (`npm run dev`).
    - Visita `/attendance` para registrar asistencia. Selecciona el salón y la fecha, marca los estados (P/A/R) y agrega notas si es necesario.
    - Usa el botón **Guardar asistencia** para almacenar los cambios. El botón **Exportar CSV** descarga el reporte diario para ese salón.
-   - La ruta `/debug/attendance` muestra información de depuración (rol, salones accesibles y resultado de una consulta ejemplo) para validar las políticas RLS.
+   - La ruta `/debug/attendance` muestra un JSON con el usuario autenticado, rol detectado, salones cargados, número de alumnos del salón seleccionado y el último error reportado por la pantalla de asistencia.
 
 ## Notas
 
