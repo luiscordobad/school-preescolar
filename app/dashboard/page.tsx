@@ -1,6 +1,20 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import type { Database } from "@/types/database";
+
+export const dynamic = "force-dynamic";
+
+type DashboardProfile = Pick<
+  Database["public"]["Tables"]["user_profile"]["Row"],
+  "id" | "display_name" | "role"
+> & {
+  school: { name: string } | null;
+};
+
+type DashboardClassroom = Pick<Database["public"]["Tables"]["classroom"]["Row"], "id" | "name">;
+
+type DashboardStudent = Pick<Database["public"]["Tables"]["student"]["Row"], "id" | "first_name" | "last_name">;
 
 export default async function DashboardPage() {
   const supabase = createServerSupabaseClient();
@@ -23,17 +37,19 @@ export default async function DashboardPage() {
     .from("user_profile")
     .select("id, display_name, role, school(name)")
     .eq("id", session.user.id)
-    .maybeSingle();
+    .maybeSingle<DashboardProfile>();
 
   const { data: classrooms } = await supabase
     .from("classroom")
     .select("id, name")
-    .order("name", { ascending: true });
+    .order("name", { ascending: true })
+    .returns<DashboardClassroom[]>();
 
   const { data: students } = await supabase
     .from("student")
     .select("id, first_name, last_name")
-    .order("first_name", { ascending: true });
+    .order("first_name", { ascending: true })
+    .returns<DashboardStudent[]>();
 
   return (
     <main className="flex flex-1 flex-col gap-6">

@@ -9,6 +9,70 @@ export type Json =
 export interface Database {
   public: {
     Tables: {
+      attendance: {
+        Row: {
+          classroom_id: string;
+          created_at: string | null;
+          date: string;
+          id: string;
+          note: string | null;
+          school_id: string;
+          status: "P" | "A" | "R";
+          student_id: string;
+          taken_by: string;
+          updated_at: string | null;
+        };
+        Insert: {
+          classroom_id: string;
+          created_at?: string | null;
+          date: string;
+          id?: string;
+          note?: string | null;
+          school_id: string;
+          status: "P" | "A" | "R";
+          student_id: string;
+          taken_by: string;
+          updated_at?: string | null;
+        };
+        Update: {
+          classroom_id?: string;
+          created_at?: string | null;
+          date?: string;
+          id?: string;
+          note?: string | null;
+          school_id?: string;
+          status?: "P" | "A" | "R";
+          student_id?: string;
+          taken_by?: string;
+          updated_at?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "attendance_classroom_id_fkey";
+            columns: ["classroom_id"];
+            referencedRelation: "classroom";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "attendance_school_id_fkey";
+            columns: ["school_id"];
+            referencedRelation: "school";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "attendance_student_id_fkey";
+            columns: ["student_id"];
+            referencedRelation: "student";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "attendance_taken_by_fkey";
+            columns: ["taken_by"];
+            referencedRelation: "user_profile";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
       classroom: {
         Row: {
           created_at: string | null;
