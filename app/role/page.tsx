@@ -1,5 +1,8 @@
 import { redirect } from "next/navigation";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import type { Database } from "@/types/database";
+
+export const dynamic = "force-dynamic";
 
 const roleDescriptions: Record<string, { title: string; description: string; focus: string[] }> = {
   director: {
@@ -44,11 +47,15 @@ export default async function RolePage() {
     redirect("/login");
   }
 
+  type RoleProfile = Pick<Database["public"]["Tables"]["user_profile"]["Row"], "role"> & {
+    school: { name: string } | null;
+  };
+
   const { data: profile } = await supabase
     .from("user_profile")
     .select("role, school(name)")
     .eq("id", session.user.id)
-    .maybeSingle();
+    .maybeSingle<RoleProfile>();
 
   const descriptor = roleDescriptions[profile?.role ?? ""];
 

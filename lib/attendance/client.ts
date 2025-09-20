@@ -8,8 +8,10 @@ export type AttendanceClassroom = {
   name: string;
 };
 
+export type TypedSupabaseClient = SupabaseClient<Database>;
+
 export async function fetchAccessibleClassrooms(
-  supabase: SupabaseClient<Database>,
+  supabase: TypedSupabaseClient,
   role: AttendanceRole | null,
   userId: string,
   schoolId: string | null

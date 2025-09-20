@@ -1,10 +1,14 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+
 import { Auth } from "@supabase/auth-ui-react";
 import { ThemeSupa } from "@supabase/auth-ui-shared";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClientSupabaseClient } from "@/lib/supabase/client";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/types/database";
 
 export default function LoginPage() {
   const supabase = useMemo(() => createClientSupabaseClient(), []);
@@ -37,6 +41,7 @@ export default function LoginPage() {
   }
 
   const redirectTo = typeof window !== "undefined" ? `${window.location.origin}/dashboard` : undefined;
+  const authClient = supabase as unknown as SupabaseClient<Database>;
 
   return (
     <main className="mx-auto flex w-full max-w-lg flex-1 flex-col justify-center gap-6">
@@ -48,7 +53,7 @@ export default function LoginPage() {
       </header>
       <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
         <Auth
-          supabaseClient={supabase}
+          supabaseClient={authClient}
           appearance={{ theme: ThemeSupa }}
           providers={[]}
           redirectTo={redirectTo}

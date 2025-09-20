@@ -1,12 +1,26 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+
 import { useEffect, useMemo, useState } from "react";
 import { createClientSupabaseClient } from "@/lib/supabase/client";
 import {
   fetchAccessibleClassrooms,
   type AttendanceClassroom,
   type AttendanceRole,
+  type TypedSupabaseClient,
 } from "@/lib/attendance/client";
+import type { Database } from "@/types/database";
+
+type ProfileInfo = Pick<
+  Database["public"]["Tables"]["user_profile"]["Row"],
+  "role" | "school_id"
+>;
+
+type DebugAttendanceRow = Pick<
+  Database["public"]["Tables"]["attendance"]["Row"],
+  "id" | "student_id" | "classroom_id" | "date" | "status" | "taken_by"
+>;
 
 type DebugState = {
   loading: boolean;
@@ -28,6 +42,7 @@ const initialState: DebugState = {
 
 export default function DebugAttendancePage() {
   const supabase = useMemo(() => createClientSupabaseClient(), []);
+  const typedSupabase = supabase as unknown as TypedSupabaseClient;
   const [state, setState] = useState<DebugState>(initialState);
 
   useEffect(() => {
@@ -53,7 +68,7 @@ export default function DebugAttendancePage() {
             .from("user_profile")
             .select("role, school_id")
             .eq("id", userId)
-            .maybeSingle();
+            .maybeSingle<ProfileInfo>();
           if (profileError) {
             errorMessage = profileError.message;
           } else {
@@ -65,7 +80,7 @@ export default function DebugAttendancePage() {
         let classrooms: AttendanceClassroom[] = [];
         if (userId && role) {
           try {
-            classrooms = await fetchAccessibleClassrooms(supabase, role, userId, schoolId);
+            classrooms = await fetchAccessibleClassrooms(typedSupabase, role, userId, schoolId);
           } catch (classroomError) {
             errorMessage = classroomError instanceof Error ? classroomError.message : String(classroomError);
           }
@@ -74,7 +89,8 @@ export default function DebugAttendancePage() {
         const { data: sampleData, error: sampleError } = await supabase
           .from("attendance")
           .select("id, student_id, classroom_id, date, status, taken_by")
-          .limit(5);
+          .limit(5)
+          .returns<DebugAttendanceRow[]>();
         if (sampleError && !errorMessage) {
           errorMessage = sampleError.message;
         }

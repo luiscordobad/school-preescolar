@@ -1,5 +1,7 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+
 import { useEffect, useMemo, useState } from "react";
 import { createClientSupabaseClient } from "@/lib/supabase/client";
 import type { Database } from "@/types/database";
@@ -7,6 +9,7 @@ import {
   fetchAccessibleClassrooms,
   type AttendanceClassroom,
   type AttendanceRole,
+  type TypedSupabaseClient,
 } from "@/lib/attendance/client";
 
 type Student = {
@@ -16,12 +19,33 @@ type Student = {
   schoolId: string;
 };
 
+type ProfileInfo = Pick<
+  Database["public"]["Tables"]["user_profile"]["Row"],
+  "role" | "school_id"
+>;
+
+type EnrollmentWithStudent = {
+  school_id: string;
+  student: {
+    id: string;
+    first_name: string;
+    last_name: string;
+  } | null;
+};
+
 type AttendanceStatus = Database["public"]["Tables"]["attendance"]["Row"]["status"];
 
 type StudentAttendance = {
   status: AttendanceStatus | null;
   note: string;
 };
+
+type AttendanceRecord = Pick<
+  Database["public"]["Tables"]["attendance"]["Row"],
+  "student_id" | "status" | "note"
+>;
+
+type AttendanceInsert = Database["public"]["Tables"]["attendance"]["Insert"];
 
 const STATUS_OPTIONS: { value: AttendanceStatus; label: string; description: string }[] = [
   { value: "P", label: "P", description: "Presente" },
@@ -31,6 +55,7 @@ const STATUS_OPTIONS: { value: AttendanceStatus; label: string; description: str
 
 export default function AttendancePage() {
   const supabase = useMemo(() => createClientSupabaseClient(), []);
+  const typedSupabase = supabase as unknown as TypedSupabaseClient;
   const [initializing, setInitializing] = useState(true);
   const [recordsLoading, setRecordsLoading] = useState(false);
   const [fatalError, setFatalError] = useState<string | null>(null);
@@ -70,7 +95,7 @@ export default function AttendancePage() {
           .from("user_profile")
           .select("role, school_id")
           .eq("id", user.id)
-          .maybeSingle();
+          .maybeSingle<ProfileInfo>();
         if (profileError) {
           throw profileError;
         }
@@ -79,7 +104,7 @@ export default function AttendancePage() {
         setRole(currentRole);
 
         const accessible = await fetchAccessibleClassrooms(
-          supabase,
+          typedSupabase,
           currentRole,
           user.id,
           profile?.school_id ?? null,
@@ -120,7 +145,8 @@ export default function AttendancePage() {
         const { data: enrollmentData, error: enrollmentError } = await supabase
           .from("enrollment")
           .select("school_id, student:student_id (id, first_name, last_name)")
-          .eq("classroom_id", selectedClassroom);
+          .eq("classroom_id", selectedClassroom)
+          .returns<EnrollmentWithStudent[]>();
         if (enrollmentError) {
           throw enrollmentError;
         }
@@ -151,7 +177,8 @@ export default function AttendancePage() {
           .from("attendance")
           .select("student_id, status, note")
           .eq("classroom_id", selectedClassroom)
-          .eq("date", date);
+          .eq("date", date)
+          .returns<AttendanceRecord[]>();
         if (attendanceError) {
           throw attendanceError;
         }
@@ -223,23 +250,23 @@ export default function AttendancePage() {
     if (!canEdit || !userId || !selectedClassroom) {
       return;
     }
-    const rows = students
-      .map((student) => {
-        const record = attendance[student.id];
-        if (!record?.status) {
-          return null;
-        }
-        return {
-          school_id: student.schoolId,
-          classroom_id: selectedClassroom,
-          student_id: student.id,
-          date,
-          status: record.status,
-          note: record.note ? record.note : null,
-          taken_by: userId,
-        };
-      })
-      .filter((row): row is Database["public"]["Tables"]["attendance"]["Insert"] => row !== null);
+    const rows: AttendanceInsert[] = [];
+    for (const student of students) {
+      const record = attendance[student.id];
+      if (!record?.status) {
+        continue;
+      }
+      const payload: AttendanceInsert = {
+        school_id: student.schoolId,
+        classroom_id: selectedClassroom,
+        student_id: student.id,
+        date,
+        status: record.status,
+        note: record.note ? record.note : null,
+        taken_by: userId,
+      };
+      rows.push(payload);
+    }
 
     if (rows.length === 0) {
       setFormError("Selecciona al menos un estado para guardar.");
@@ -249,9 +276,11 @@ export default function AttendancePage() {
     setSaving(true);
     setFormError(null);
     try {
-      const { error: upsertError } = await supabase
-        .from("attendance")
-        .upsert(rows, { onConflict: "student_id,date" });
+      const upsertRows = rows as AttendanceInsert[];
+      const { error: upsertError } = await (supabase.from("attendance") as any).upsert(
+        upsertRows,
+        { onConflict: "student_id,date" },
+      );
       if (upsertError) {
         throw upsertError;
       }
@@ -259,7 +288,8 @@ export default function AttendancePage() {
         .from("attendance")
         .select("student_id, status, note")
         .eq("classroom_id", selectedClassroom)
-        .eq("date", date);
+        .eq("date", date)
+        .returns<AttendanceRecord[]>();
       if (refreshedError) {
         throw refreshedError;
       }
