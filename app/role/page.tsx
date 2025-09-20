@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import type { Database } from "@/types/database";
 
 const roleDescriptions: Record<string, { title: string; description: string; focus: string[] }> = {
   director: {
@@ -34,6 +35,14 @@ const roleDescriptions: Record<string, { title: string; description: string; foc
   }
 };
 
+type ProfileRow = Database["public"]["Tables"]["user_profile"]["Row"];
+type RoleProfileQueryResult = Pick<ProfileRow, "role"> & {
+  school: { name: string }[] | { name: string } | null;
+};
+type RoleProfile = Pick<ProfileRow, "role"> & {
+  school: { name: string } | null;
+};
+
 export default async function RolePage() {
   const supabase = createServerSupabaseClient();
   const {
@@ -48,9 +57,9 @@ export default async function RolePage() {
     .from("user_profile")
     .select("role, school:school_id(name)")
     .eq("id", session.user.id)
-    .maybeSingle();
+    .maybeSingle<RoleProfileQueryResult>();
 
-  const profile = profileData
+  const profile: RoleProfile | null = profileData
     ? {
         ...profileData,
         school: Array.isArray(profileData.school)

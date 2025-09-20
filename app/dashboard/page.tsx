@@ -1,6 +1,15 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import type { Database } from "@/types/database";
+
+type ProfileRow = Database["public"]["Tables"]["user_profile"]["Row"];
+type ProfileQueryResult = ProfileRow & {
+  school: { name: string }[] | { name: string } | null;
+};
+type NormalizedProfile = ProfileRow & {
+  school: { name: string } | null;
+};
 
 export default async function DashboardPage() {
   const supabase = createServerSupabaseClient();
@@ -23,9 +32,9 @@ export default async function DashboardPage() {
     .from("user_profile")
     .select("id, display_name, role, school:school_id(name)")
     .eq("id", session.user.id)
-    .maybeSingle();
+    .maybeSingle<ProfileQueryResult>();
 
-  const profile = profileData
+  const profile: NormalizedProfile | null = profileData
     ? {
         ...profileData,
         school: Array.isArray(profileData.school)
