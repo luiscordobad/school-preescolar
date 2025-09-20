@@ -119,7 +119,10 @@ create policy "Members read their school" on public.school
   );
 
 create policy "Self manage profile" on public.user_profile
-  for select using (id = auth.uid())
+  for select using (id = auth.uid());
+
+create policy "Self update profile" on public.user_profile
+  for update using (id = auth.uid())
   with check (id = auth.uid());
 
 create policy "Directors manage profiles" on public.user_profile
