@@ -1,6 +1,6 @@
 begin;
 
-select plan(3);
+select plan(6);
 
 set local role service_role;
 
@@ -56,6 +56,7 @@ select is(
 
 -- Maestra sólo ve sus alumnos asignados (2 de 3)
 select set_config('request.jwt.claim.sub', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', true);
+select set_config('request.jwt.claim.role', 'authenticated', true);
 select is(
   (select count(*) from public.student),
   2::bigint,
@@ -64,10 +65,86 @@ select is(
 
 -- Tutor únicamente ve a su hijo
 select set_config('request.jwt.claim.sub', 'cccccccc-cccc-cccc-cccc-cccccccccccc', true);
+select set_config('request.jwt.claim.role', 'authenticated', true);
 select is(
   (select count(*) from public.student),
   1::bigint,
   'El tutor ve únicamente a sus hijos registrados'
+);
+
+-- Registrar asistencia como maestra
+select set_config('request.jwt.claim.sub', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', true);
+select set_config('request.jwt.claim.role', 'authenticated', true);
+insert into public.attendance (school_id, classroom_id, student_id, date, status, note, taken_by)
+values (
+  '11111111-1111-1111-1111-111111111111',
+  '22222222-2222-2222-2222-222222222222',
+  '33333333-3333-3333-3333-333333333333',
+  '2024-02-20',
+  'P',
+  'Llegó puntual',
+  'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'
+)
+on conflict (student_id, date) do update set
+  status = excluded.status,
+  note = excluded.note,
+  taken_by = excluded.taken_by;
+
+select is(
+  (
+    select status
+    from public.attendance
+    where student_id = '33333333-3333-3333-3333-333333333333'
+      and date = '2024-02-20'
+  ),
+  'P'::text,
+  'La maestra puede registrar asistencia de su salón'
+);
+
+-- Actualizar asistencia mediante upsert
+insert into public.attendance (school_id, classroom_id, student_id, date, status, note, taken_by)
+values (
+  '11111111-1111-1111-1111-111111111111',
+  '22222222-2222-2222-2222-222222222222',
+  '33333333-3333-3333-3333-333333333333',
+  '2024-02-20',
+  'A',
+  'Ausente por cita médica',
+  'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'
+)
+on conflict (student_id, date) do update set
+  status = excluded.status,
+  note = excluded.note,
+  taken_by = excluded.taken_by;
+
+select is(
+  (
+    select status
+    from public.attendance
+    where student_id = '33333333-3333-3333-3333-333333333333'
+      and date = '2024-02-20'
+  ),
+  'A'::text,
+  'El upsert actualiza la asistencia existente'
+);
+
+-- Un tutor no puede escribir asistencia
+select set_config('request.jwt.claim.sub', 'cccccccc-cccc-cccc-cccc-cccccccccccc', true);
+select set_config('request.jwt.claim.role', 'authenticated', true);
+select throws_like(
+  $$
+    insert into public.attendance (school_id, classroom_id, student_id, date, status, taken_by)
+    values (
+      '11111111-1111-1111-1111-111111111111',
+      '22222222-2222-2222-2222-222222222222',
+      '33333333-3333-3333-3333-333333333333',
+      '2024-02-21',
+      'P',
+      'cccccccc-cccc-cccc-cccc-cccccccccccc'
+    )
+  $$,
+  'violates row-level security policy',
+  'Los tutores no tienen permisos para escribir asistencia'
 );
 
 select finish();
