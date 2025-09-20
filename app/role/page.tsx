@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import type { Database } from "@/types/database";
 
 const roleDescriptions: Record<string, { title: string; description: string; focus: string[] }> = {
   director: {
@@ -46,11 +47,25 @@ export default async function RolePage() {
 
   const { data: profile } = await supabase
     .from("user_profile")
-    .select("role, school(name)")
+    .select("role, school:school_id(name)")
     .eq("id", session.user.id)
     .maybeSingle();
 
-  const descriptor = roleDescriptions[profile?.role ?? ""];
+  type ProfileRow = Database["public"]["Tables"]["user_profile"]["Row"];
+  type SchoolRow = Database["public"]["Tables"]["school"]["Row"];
+
+  type ProfileWithSchool = ProfileRow & {
+    school?: SchoolRow | SchoolRow[] | null;
+  };
+
+  const typedProfile = profile as ProfileWithSchool | null;
+
+  const schoolRelation = typedProfile?.school;
+  const schoolName = Array.isArray(schoolRelation)
+    ? schoolRelation[0]?.name ?? null
+    : schoolRelation?.name ?? null;
+
+  const descriptor = roleDescriptions[typedProfile?.role ?? ""];
 
   return (
     <main className="flex flex-1 flex-col gap-6">
@@ -61,8 +76,8 @@ export default async function RolePage() {
             <div>
               <p className="text-sm uppercase tracking-wide text-slate-500">Tu rol</p>
               <h2 className="text-xl font-semibold">{descriptor.title}</h2>
-              {profile?.school?.name ? (
-                <p className="mt-1 text-sm text-slate-500">Escuela: {profile.school.name}</p>
+              {schoolName ? (
+                <p className="mt-1 text-sm text-slate-500">Escuela: {schoolName}</p>
               ) : null}
             </div>
             <p className="text-base text-slate-600">{descriptor.description}</p>

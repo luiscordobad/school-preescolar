@@ -5,6 +5,7 @@ import { ThemeSupa } from "@supabase/auth-ui-shared";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClientSupabaseClient } from "@/lib/supabase/client";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 export default function LoginPage() {
   const supabase = useMemo(() => createClientSupabaseClient(), []);
@@ -48,7 +49,7 @@ export default function LoginPage() {
       </header>
       <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
         <Auth
-          supabaseClient={supabase}
+          supabaseClient={supabase as unknown as SupabaseClient}
           appearance={{ theme: ThemeSupa }}
           providers={[]}
           redirectTo={redirectTo}
