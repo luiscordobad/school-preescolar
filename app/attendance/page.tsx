@@ -4,34 +4,18 @@ export const dynamic = "force-dynamic";
 
 import { useEffect, useMemo, useState } from "react";
 import { createClientSupabaseClient } from "@/lib/supabase/client";
-import type { Database } from "@/types/database";
 import {
-  fetchAccessibleClassrooms,
+  getClassroomsForUser,
+  getMyProfile,
+  getStudentDisplayName,
+  getStudentsForClassroom,
   type AttendanceClassroom,
   type AttendanceRole,
+  type AttendanceStudentRow,
   type TypedSupabaseClient,
 } from "@/lib/attendance/client";
-
-type Student = {
-  id: string;
-  firstName: string;
-  lastName: string;
-  schoolId: string;
-};
-
-type ProfileInfo = Pick<
-  Database["public"]["Tables"]["user_profile"]["Row"],
-  "role" | "school_id"
->;
-
-type EnrollmentWithStudent = {
-  school_id: string;
-  student: {
-    id: string;
-    first_name: string;
-    last_name: string;
-  } | null;
-};
+import { updateAttendanceDebugState } from "@/lib/attendance/debug-store";
+import type { Database } from "@/types/database";
 
 type AttendanceStatus = Database["public"]["Tables"]["attendance"]["Row"]["status"];
 
@@ -47,11 +31,20 @@ type AttendanceRecord = Pick<
 
 type AttendanceInsert = Database["public"]["Tables"]["attendance"]["Insert"];
 
+type StudentView = AttendanceStudentRow & {
+  displayName: string;
+};
+
 const STATUS_OPTIONS: { value: AttendanceStatus; label: string; description: string }[] = [
   { value: "P", label: "P", description: "Presente" },
   { value: "A", label: "A", description: "Ausente" },
   { value: "R", label: "R", description: "Retardo" },
 ];
+
+function formatQueryError(query: string, error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return `${query}: ${message}`;
+}
 
 export default function AttendancePage() {
   const supabase = useMemo(() => createClientSupabaseClient(), []);
@@ -65,7 +58,7 @@ export default function AttendancePage() {
   const [classrooms, setClassrooms] = useState<AttendanceClassroom[]>([]);
   const [selectedClassroom, setSelectedClassroom] = useState<string | null>(null);
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [students, setStudents] = useState<Student[]>([]);
+  const [students, setStudents] = useState<StudentView[]>([]);
   const [attendance, setAttendance] = useState<Record<string, StudentAttendance>>({});
   const [saving, setSaving] = useState(false);
 
@@ -73,105 +66,125 @@ export default function AttendancePage() {
 
   useEffect(() => {
     let ignore = false;
+
     async function bootstrap() {
       setInitializing(true);
       setFatalError(null);
+      updateAttendanceDebugState({ lastError: null });
+
       try {
         const {
           data: { user },
           error: userError,
         } = await supabase.auth.getUser();
+
         if (userError) {
-          throw userError;
+          throw new Error(formatQueryError("auth.getUser", userError));
         }
+
         if (!user) {
-          setFatalError("Inicia sesión para registrar asistencia.");
+          const message = "auth.getUser: Inicia sesión para registrar asistencia.";
+          setFatalError(message);
+          updateAttendanceDebugState({ lastError: message });
           return;
         }
+
         if (ignore) return;
+
         setUserId(user.id);
+        updateAttendanceDebugState({ user: { id: user.id, email: user.email ?? null } });
 
-        const { data: profile, error: profileError } = await supabase
-          .from("user_profile")
-          .select("role, school_id")
-          .eq("id", user.id)
-          .maybeSingle<ProfileInfo>();
-        if (profileError) {
-          throw profileError;
-        }
-        const currentRole = profile?.role ?? null;
+        const profile = await getMyProfile(typedSupabase, user.id).catch((error) => {
+          throw new Error(formatQueryError("getMyProfile", error));
+        });
+
         if (ignore) return;
-        setRole(currentRole);
 
-        const accessible = await fetchAccessibleClassrooms(
+        if (!profile) {
+          const message = "getMyProfile: No encontramos tu perfil.";
+          setFatalError(message);
+          updateAttendanceDebugState({ lastError: message });
+          return;
+        }
+
+        const currentRole = profile.role ?? null;
+        setRole(currentRole);
+        updateAttendanceDebugState({ role: currentRole });
+
+        const accessibleClassrooms = await getClassroomsForUser(
           typedSupabase,
           currentRole,
-          user.id,
-          profile?.school_id ?? null,
-        );
+          profile,
+        ).catch((error) => {
+          throw new Error(formatQueryError("getClassroomsForUser", error));
+        });
+
         if (ignore) return;
-        setClassrooms(accessible);
-        if (accessible.length > 0) {
-          setSelectedClassroom(accessible[0].id);
+
+        setClassrooms(accessibleClassrooms);
+        updateAttendanceDebugState({ classrooms: accessibleClassrooms });
+
+        if (accessibleClassrooms.length > 0) {
+          setSelectedClassroom(accessibleClassrooms[0].id);
+        } else {
+          updateAttendanceDebugState({ studentsCountSelected: 0 });
         }
+
+        setFatalError(null);
+        updateAttendanceDebugState({ lastError: null });
       } catch (err) {
         if (ignore) return;
-        const message = err instanceof Error ? err.message : "No fue posible cargar tus datos.";
+        const message = err instanceof Error ? err.message : String(err);
         setFatalError(message);
+        updateAttendanceDebugState({ lastError: message });
       } finally {
         if (!ignore) {
           setInitializing(false);
         }
       }
     }
+
     bootstrap();
+
     return () => {
       ignore = true;
     };
-  }, [supabase]);
+  }, [supabase, typedSupabase]);
 
   useEffect(() => {
     let ignore = false;
+
     async function loadAttendance() {
       if (!selectedClassroom || !date) {
         setStudents([]);
         setAttendance({});
+        updateAttendanceDebugState({ studentsCountSelected: 0 });
         return;
       }
+
       setRecordsLoading(true);
       setFatalError(null);
       setFormError(null);
+
       try {
-        const { data: enrollmentData, error: enrollmentError } = await supabase
-          .from("enrollment")
-          .select("school_id, student:student_id (id, first_name, last_name)")
-          .eq("classroom_id", selectedClassroom)
-          .returns<EnrollmentWithStudent[]>();
-        if (enrollmentError) {
-          throw enrollmentError;
-        }
+        const fetchedStudents = await getStudentsForClassroom(
+          typedSupabase,
+          selectedClassroom,
+        ).catch((error) => {
+          throw new Error(formatQueryError("getStudentsForClassroom", error));
+        });
+
         if (ignore) return;
-        const studentList: Student[] = (enrollmentData ?? [])
-          .map((entry) => {
-            const student = entry.student as { id: string; first_name: string; last_name: string } | null;
-            if (!student) {
-              return null;
-            }
-            return {
-              id: student.id,
-              firstName: student.first_name,
-              lastName: student.last_name,
-              schoolId: entry.school_id,
-            };
-          })
-          .filter((value): value is Student => value !== null)
-          .sort((a, b) => {
-            const lastNameComparison = a.lastName.localeCompare(b.lastName, "es", { sensitivity: "base" });
-            if (lastNameComparison !== 0) return lastNameComparison;
-            return a.firstName.localeCompare(b.firstName, "es", { sensitivity: "base" });
-          });
-        if (ignore) return;
+
+        const studentList: StudentView[] = (fetchedStudents ?? [])
+          .map((student) => ({
+            ...student,
+            displayName: getStudentDisplayName(student) || "(Sin nombre)",
+          }))
+          .sort((a, b) => a.displayName.localeCompare(b.displayName, "es", { sensitivity: "base" }));
+
         setStudents(studentList);
+        updateAttendanceDebugState({ studentsCountSelected: studentList.length, lastError: null });
 
         const { data: attendanceRows, error: attendanceError } = await supabase
           .from("attendance")
@@ -179,10 +192,13 @@ export default function AttendancePage() {
           .eq("classroom_id", selectedClassroom)
           .eq("date", date)
           .returns<AttendanceRecord[]>();
+
         if (attendanceError) {
-          throw attendanceError;
+          throw new Error(formatQueryError("attendance.select", attendanceError));
         }
+
         if (ignore) return;
+
         const map: Record<string, StudentAttendance> = {};
         for (const row of attendanceRows ?? []) {
           map[row.student_id] = {
@@ -190,22 +206,27 @@ export default function AttendancePage() {
             note: row.note ?? "",
           };
         }
+
         setAttendance(map);
+        updateAttendanceDebugState({ lastError: null });
       } catch (err) {
         if (ignore) return;
-        const message = err instanceof Error ? err.message : "No fue posible cargar la asistencia.";
+        const message = err instanceof Error ? err.message : String(err);
         setFatalError(message);
+        updateAttendanceDebugState({ lastError: message });
       } finally {
         if (!ignore) {
           setRecordsLoading(false);
         }
       }
     }
+
     loadAttendance();
+
     return () => {
       ignore = true;
     };
-  }, [date, selectedClassroom, supabase]);
+  }, [date, selectedClassroom, supabase, typedSupabase]);
 
   const summary = useMemo(() => {
     return students.reduce(
@@ -250,14 +271,16 @@ export default function AttendancePage() {
     if (!canEdit || !userId || !selectedClassroom) {
       return;
     }
+
     const rows: AttendanceInsert[] = [];
     for (const student of students) {
       const record = attendance[student.id];
       if (!record?.status) {
         continue;
       }
+
       const payload: AttendanceInsert = {
-        school_id: student.schoolId,
+        school_id: student.school_id,
         classroom_id: selectedClassroom,
         student_id: student.id,
         date,
@@ -269,30 +292,35 @@ export default function AttendancePage() {
     }
 
     if (rows.length === 0) {
-      setFormError("Selecciona al menos un estado para guardar.");
+      const message = "Selecciona al menos un estado para guardar.";
+      setFormError(message);
+      updateAttendanceDebugState({ lastError: message });
       return;
     }
 
     setSaving(true);
     setFormError(null);
+
     try {
-      const upsertRows = rows as AttendanceInsert[];
-      const { error: upsertError } = await (supabase.from("attendance") as any).upsert(
-        upsertRows,
-        { onConflict: "student_id,date" },
-      );
+      const { error: upsertError } = await (supabase.from("attendance") as any).upsert(rows, {
+        onConflict: "student_id,date",
+      });
+
       if (upsertError) {
-        throw upsertError;
+        throw new Error(formatQueryError("attendance.upsert", upsertError));
       }
+
       const { data: refreshedRows, error: refreshedError } = await supabase
         .from("attendance")
         .select("student_id, status, note")
         .eq("classroom_id", selectedClassroom)
         .eq("date", date)
         .returns<AttendanceRecord[]>();
+
       if (refreshedError) {
-        throw refreshedError;
+        throw new Error(formatQueryError("attendance.select", refreshedError));
       }
+
       const map: Record<string, StudentAttendance> = {};
       for (const row of refreshedRows ?? []) {
         map[row.student_id] = {
@@ -300,10 +328,13 @@ export default function AttendancePage() {
           note: row.note ?? "",
         };
       }
+
       setAttendance(map);
+      updateAttendanceDebugState({ lastError: null });
     } catch (err) {
       const message = err instanceof Error ? err.message : "No se pudo guardar la asistencia.";
       setFormError(message);
+      updateAttendanceDebugState({ lastError: message });
     } finally {
       setSaving(false);
     }
@@ -319,8 +350,7 @@ export default function AttendancePage() {
         const record = attendance[student.id];
         const statusLabel = record?.status ?? "";
         const note = record?.note ?? "";
-        const fullName = `${student.firstName} ${student.lastName}`;
-        return [fullName, statusLabel, note];
+        return [student.displayName, statusLabel, note];
       }),
     ];
     const csvContent = rows
@@ -438,9 +468,10 @@ export default function AttendancePage() {
                   >
                     <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                       <div>
-                        <p className="text-base font-semibold text-slate-800">
-                          {student.firstName} {student.lastName}
-                        </p>
+                        <p className="text-base font-semibold text-slate-800">{student.displayName}</p>
+                        {student.date_of_birth ? (
+                          <p className="text-xs text-slate-500">Fecha de nacimiento: {student.date_of_birth}</p>
+                        ) : null}
                       </div>
                       <div className="flex items-center gap-2">
                         {STATUS_OPTIONS.map((option) => (

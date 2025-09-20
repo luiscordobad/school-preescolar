@@ -204,6 +204,7 @@ export interface Database {
           created_at: string | null;
           date_of_birth: string | null;
           first_name: string;
+          full_name: string | null;
           id: string;
           last_name: string;
           school_id: string;
@@ -212,6 +213,7 @@ export interface Database {
           created_at?: string | null;
           date_of_birth?: string | null;
           first_name: string;
+          full_name?: string | null;
           id?: string;
           last_name: string;
           school_id: string;
@@ -220,6 +222,7 @@ export interface Database {
           created_at?: string | null;
           date_of_birth?: string | null;
           first_name?: string;
+          full_name?: string | null;
           id?: string;
           last_name?: string;
           school_id?: string;
