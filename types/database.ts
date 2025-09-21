@@ -150,21 +150,21 @@ export interface Database {
           id: string;
           relationship: string | null;
           student_id: string;
-          user_id: string;
+          profile_id: string;
         };
         Insert: {
           created_at?: string | null;
           id?: string;
           relationship?: string | null;
           student_id: string;
-          user_id: string;
+          profile_id: string;
         };
         Update: {
           created_at?: string | null;
           id?: string;
           relationship?: string | null;
           student_id?: string;
-          user_id?: string;
+          profile_id?: string;
         };
         Relationships: [
           {
@@ -174,8 +174,8 @@ export interface Database {
             referencedColumns: ["id"];
           },
           {
-            foreignKeyName: "guardian_user_id_fkey";
-            columns: ["user_id"];
+            foreignKeyName: "guardian_profile_id_fkey";
+            columns: ["profile_id"];
             referencedRelation: "user_profile";
             referencedColumns: ["id"];
           }
@@ -272,21 +272,42 @@ export interface Database {
           created_at: string | null;
           display_name: string | null;
           id: string;
-          role: "director" | "teacher" | "parent";
+          role:
+            | "director"
+            | "teacher"
+            | "maestra"
+            | "padre"
+            | "madre"
+            | "tutor"
+            | "parent";
           school_id: string | null;
         };
         Insert: {
           created_at?: string | null;
           display_name?: string | null;
           id: string;
-          role?: "director" | "teacher" | "parent";
+          role?:
+            | "director"
+            | "teacher"
+            | "maestra"
+            | "padre"
+            | "madre"
+            | "tutor"
+            | "parent";
           school_id?: string | null;
         };
         Update: {
           created_at?: string | null;
           display_name?: string | null;
           id?: string;
-          role?: "director" | "teacher" | "parent";
+          role?:
+            | "director"
+            | "teacher"
+            | "maestra"
+            | "padre"
+            | "madre"
+            | "tutor"
+            | "parent";
           school_id?: string | null;
         };
         Relationships: [
