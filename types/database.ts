@@ -388,7 +388,30 @@ export type Database = {
         ];
       };
     };
-    Views: {};
+    Views: {
+      v_attendance_day_classroom: {
+        Row: {
+          classroom_id: string;
+          date: string;
+          present_count: number;
+          absent_count: number;
+          tardy_count: number;
+        };
+        Relationships: [];
+      };
+      v_attendance_month_student: {
+        Row: {
+          student_id: string;
+          month: string;
+          present_count: number;
+          absent_count: number;
+          tardy_count: number;
+          total_days: number;
+          attendance_percentage: number | null;
+        };
+        Relationships: [];
+      };
+    };
     Functions: {};
     Enums: {};
     CompositeTypes: {};
