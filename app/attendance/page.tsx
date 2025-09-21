@@ -69,7 +69,7 @@ export default function AttendancePage() {
   const [attendance, setAttendance] = useState<Record<string, StudentAttendance>>({});
   const [saving, setSaving] = useState(false);
 
-  const canEdit = role === "director" || role === "teacher";
+  const canEdit = role === "director" || role === "teacher" || role === "maestra";
 
   useEffect(() => {
     let ignore = false;
