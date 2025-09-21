@@ -15,6 +15,8 @@ type NewThreadFormProps = {
   action: FormHTMLAttributes<HTMLFormElement>["action"];
   errorMessage?: string | null;
   allowGeneral: boolean;
+  defaultType?: ThreadType;
+  defaultClassroomId?: string | null;
 };
 
 const TYPES: { value: ThreadType; label: string }[] = [
@@ -35,9 +37,24 @@ function SubmitButton() {
   );
 }
 
-export function NewThreadForm({ classrooms, action, errorMessage, allowGeneral }: NewThreadFormProps) {
+export function NewThreadForm({
+  classrooms,
+  action,
+  errorMessage,
+  allowGeneral,
+  defaultType,
+  defaultClassroomId,
+}: NewThreadFormProps) {
   const typeOptions = allowGeneral ? TYPES : TYPES.filter((option) => option.value !== "general");
-  const [type, setType] = useState<ThreadType>(() => (allowGeneral ? "general" : "classroom"));
+  const [type, setType] = useState<ThreadType>(() => {
+    if (!allowGeneral) {
+      return "classroom";
+    }
+    if (defaultType && typeOptions.some((option) => option.value === defaultType)) {
+      return defaultType;
+    }
+    return "general";
+  });
   const showClassroomSelect = type === "classroom";
 
   return (
@@ -71,6 +88,7 @@ export function NewThreadForm({ classrooms, action, errorMessage, allowGeneral }
             name="classroomId"
             required
             className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            defaultValue={defaultClassroomId ?? ""}
           >
             <option value="">Selecciona un salón</option>
             {classrooms.map((classroom) => (
