@@ -74,4 +74,19 @@ Bootstrap inicial de la plataforma escolar preescolar construida con Next.js, Ta
 
 ## Nota sobre autenticación
 
-La pantalla de `/login` utiliza el componente oficial de Supabase Auth UI. Al iniciar sesión, la sesión se almacena en cookies manejadas por `@supabase/auth-helpers-nextjs`. Los componentes del dashboard y del detalle de rol verifican la sesión en el servidor y aplican redirecciones a `/login` en caso de no existir.
+La pantalla de `/login` utiliza el componente oficial de Supabase Auth UI. Al iniciar sesión, la sesión se almacena en cookies manejadas por `@supabase/auth-helpers-nextjs`. Las páginas de `/dashboard`, `/role` y `/debug/profile` leen la sesión con el cliente de Supabase del lado del navegador y redirigen a `/login` si no existe una sesión válida.
+
+## Si ves "getMyProfile" en rojo
+
+1. Verifica que las variables `NEXT_PUBLIC_SUPABASE_URL` y `NEXT_PUBLIC_SUPABASE_ANON_KEY` estén configuradas en tu entorno (por ejemplo, en Vercel → Project Settings → Environment Variables) y que coincidan con tu proyecto de Supabase.
+2. Asegúrate de que exista una fila en la tabla `user_profile` con `id` igual a tu `auth.uid` (el UUID del usuario autenticado), `school_id` y `role` definidos. Puedes crearla desde Supabase → Table editor.
+3. Confirma que la política RLS permita leer tu propio perfil. Un ejemplo mínimo es:
+
+   ```sql
+   alter table public.user_profile enable row level security;
+   drop policy if exists up_self on public.user_profile;
+   create policy up_self on public.user_profile
+   for select using (id = auth.uid());
+   ```
+
+4. Con la sesión iniciada, visita `/debug/profile` para obtener un JSON de diagnóstico que confirma tu usuario, los valores encontrados en `user_profile` y si las variables de entorno públicas están disponibles.
