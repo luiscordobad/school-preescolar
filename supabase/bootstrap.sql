@@ -54,14 +54,14 @@ create index student_school_idx on public.student (school_id);
 
 create table public.guardian (
   id uuid primary key default gen_random_uuid(),
-  profile_id uuid not null references public.user_profile (id) on delete cascade,
+  user_id uuid not null references public.user_profile (id) on delete cascade,
   student_id uuid not null references public.student (id) on delete cascade,
   relationship text,
   created_at timestamptz not null default timezone('utc'::text, now()),
-  unique (profile_id, student_id)
+  unique (user_id, student_id)
 );
 
-create index guardian_profile_idx on public.guardian (profile_id);
+create index guardian_user_idx on public.guardian (user_id);
 create index guardian_student_idx on public.guardian (student_id);
 
 create table public.enrollment (
@@ -176,7 +176,7 @@ create policy "Guardians read their students" on public.student
     exists (
       select 1
       from public.guardian g
-      where g.profile_id = auth.uid()
+      where g.user_id = auth.uid()
         and g.student_id = student.id
     )
   );
@@ -196,7 +196,7 @@ create policy "Directors read guardians" on public.guardian
 
 create policy "Guardians read themselves" on public.guardian
   for select
-  using (guardian.profile_id = auth.uid());
+  using (guardian.user_id = auth.uid());
 
 create policy "Directors read enrollments" on public.enrollment
   for select

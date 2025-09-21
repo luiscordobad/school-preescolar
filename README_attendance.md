@@ -6,7 +6,7 @@ Este repositorio incluye el MVP para registrar asistencia diaria por salón.
 
 1. **Ejecutar el SQL en Supabase**
    - Ve a *SQL Editor* en Supabase Studio.
-   - Copia el contenido de `supabase/attendance.sql` y ejecútalo en tu proyecto.
+   - Copia el contenido de `sql/attendance.sql` y ejecútalo en tu proyecto.
    - Esto creará la tabla `attendance`, los índices, el trigger de `updated_at` y las políticas RLS necesarias.
 
 2. **Asignar maestras a salones**
@@ -18,7 +18,7 @@ Este repositorio incluye el MVP para registrar asistencia diaria por salón.
    - Inicia la aplicación (`npm run dev`).
    - Visita `/attendance` para registrar asistencia. Selecciona el salón y la fecha, marca los estados (P/A/R) y agrega notas si es necesario.
    - Usa el botón **Guardar asistencia** para almacenar los cambios. El botón **Exportar CSV** descarga el reporte diario para ese salón.
-   - La ruta `/debug/attendance` muestra información de depuración (rol, salones accesibles y resultado de una consulta ejemplo) para validar las políticas RLS.
+   - La ruta `/debug/attendance` muestra información de depuración ({ userId, role, classroomId, date, sampleRows, error }) para validar las políticas RLS.
 
 ## Notas
 

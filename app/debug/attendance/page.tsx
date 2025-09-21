@@ -6,7 +6,6 @@ import { useEffect, useMemo, useState } from "react";
 import { createClientSupabaseClient } from "@/lib/supabase/client";
 import {
   fetchAccessibleClassrooms,
-  type AttendanceClassroom,
   type AttendanceRole,
   type TypedSupabaseClient,
 } from "@/lib/attendance/client";
@@ -26,30 +25,31 @@ type DebugState = {
   loading: boolean;
   userId: string | null;
   role: AttendanceRole | null;
-  classroomsDisponibles: AttendanceClassroom[];
-  sampleQuery: unknown;
+  classroomId: string | null;
+  date: string;
+  sampleRows: DebugAttendanceRow[] | null;
   error: string | null;
-};
-
-const initialState: DebugState = {
-  loading: true,
-  userId: null,
-  role: null,
-  classroomsDisponibles: [],
-  sampleQuery: null,
-  error: null,
 };
 
 export default function DebugAttendancePage() {
   const supabase = useMemo(() => createClientSupabaseClient(), []);
   const typedSupabase = supabase as unknown as TypedSupabaseClient;
-  const [state, setState] = useState<DebugState>(initialState);
+  const defaultDate = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const [state, setState] = useState<DebugState>(() => ({
+    loading: true,
+    userId: null,
+    role: null,
+    classroomId: null,
+    date: defaultDate,
+    sampleRows: null,
+    error: null,
+  }));
 
   useEffect(() => {
     let ignore = false;
     async function loadDebug() {
+      setState((prev) => ({ ...prev, loading: true, error: null }));
       try {
-        setState(initialState);
         const {
           data: { user },
           error: userError,
@@ -77,22 +77,30 @@ export default function DebugAttendancePage() {
           }
         }
 
-        let classrooms: AttendanceClassroom[] = [];
+        let classroomId: string | null = null;
         if (userId && role) {
           try {
-            classrooms = await fetchAccessibleClassrooms(typedSupabase, role, userId, schoolId);
+            const classrooms = await fetchAccessibleClassrooms(typedSupabase, role, userId, schoolId);
+            classroomId = classrooms[0]?.id ?? null;
           } catch (classroomError) {
             errorMessage = classroomError instanceof Error ? classroomError.message : String(classroomError);
           }
         }
 
-        const { data: sampleData, error: sampleError } = await supabase
-          .from("attendance")
-          .select("id, student_id, classroom_id, date, status, taken_by")
-          .limit(5)
-          .returns<DebugAttendanceRow[]>();
-        if (sampleError && !errorMessage) {
-          errorMessage = sampleError.message;
+        let sampleRows: DebugAttendanceRow[] | null = null;
+        if (classroomId) {
+          const { data: sampleData, error: sampleError } = await supabase
+            .from("attendance")
+            .select("id, student_id, classroom_id, date, status, taken_by")
+            .eq("classroom_id", classroomId)
+            .eq("date", defaultDate)
+            .limit(5)
+            .returns<DebugAttendanceRow[]>();
+          if (sampleError) {
+            errorMessage = errorMessage ?? sampleError.message;
+          } else {
+            sampleRows = sampleData ?? [];
+          }
         }
 
         if (ignore) return;
@@ -100,8 +108,9 @@ export default function DebugAttendancePage() {
           loading: false,
           userId,
           role,
-          classroomsDisponibles: classrooms,
-          sampleQuery: sampleData ?? null,
+          classroomId,
+          date: defaultDate,
+          sampleRows,
           error: errorMessage,
         });
       } catch (err) {
@@ -111,8 +120,9 @@ export default function DebugAttendancePage() {
           loading: false,
           userId: null,
           role: null,
-          classroomsDisponibles: [],
-          sampleQuery: null,
+          classroomId: null,
+          date: defaultDate,
+          sampleRows: null,
           error: message,
         });
       }
@@ -121,7 +131,7 @@ export default function DebugAttendancePage() {
     return () => {
       ignore = true;
     };
-  }, [supabase]);
+  }, [defaultDate, supabase]);
 
   return (
     <main className="flex flex-1 flex-col gap-6">
@@ -137,10 +147,10 @@ export default function DebugAttendancePage() {
             {
               userId: state.userId,
               role: state.role,
-              classroomsDisponibles: state.classroomsDisponibles,
-              sampleQuery: state.sampleQuery,
+              classroomId: state.classroomId,
+              date: state.date,
+              sampleRows: state.sampleRows,
               error: state.error,
-              loading: state.loading,
             },
             null,
             2,
