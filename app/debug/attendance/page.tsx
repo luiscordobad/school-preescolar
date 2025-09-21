@@ -7,7 +7,7 @@ import { createClientSupabaseClient } from "@/lib/supabase/client";
 import {
   fetchAccessibleClassrooms,
   type AttendanceClassroom,
-  type AttendanceRole,
+  type ExtendedAttendanceRole,
   type TypedSupabaseClient,
 } from "@/lib/attendance/client";
 import {
@@ -16,10 +16,10 @@ import {
 } from "@/lib/attendance/debug-store";
 import type { Database } from "@/types/database";
 
-type ProfileInfo = Pick<
-  Database["public"]["Tables"]["user_profile"]["Row"],
-  "role" | "school_id"
->;
+type ProfileInfo = {
+  role: ExtendedAttendanceRole | null;
+  school_id: string | null;
+};
 
 type DebugAttendanceRow = Pick<
   Database["public"]["Tables"]["attendance"]["Row"],
@@ -29,7 +29,7 @@ type DebugAttendanceRow = Pick<
 type DebugState = {
   loading: boolean;
   userId: string | null;
-  role: AttendanceRole | null;
+  role: ExtendedAttendanceRole | null;
   classroomsDisponibles: AttendanceClassroom[];
   sampleQuery: DebugAttendanceRow[] | null;
   error: string | null;
@@ -68,7 +68,7 @@ export default function DebugAttendancePage() {
         }
         if (ignore) return;
         const userId = user?.id ?? null;
-        let role: AttendanceRole | null = null;
+        let role: ExtendedAttendanceRole | null = null;
         let schoolId: string | null = null;
         let errorMessage: string | null = null;
 

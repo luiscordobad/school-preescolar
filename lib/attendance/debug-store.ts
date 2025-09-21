@@ -1,7 +1,7 @@
-import type { AttendanceRole } from "@/lib/attendance/client";
+import type { ExtendedAttendanceRole } from "@/lib/attendance/client";
 
 type AttendanceDebugState = {
-  role: AttendanceRole | null;
+  role: ExtendedAttendanceRole | null;
   classroomIds: string[];
   childrenIds: string[];
   date: string | null;

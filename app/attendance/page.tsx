@@ -8,7 +8,7 @@ import type { Database } from "@/types/database";
 import {
   fetchAccessibleClassrooms,
   type AttendanceClassroom,
-  type AttendanceRole,
+  type ExtendedAttendanceRole,
   type TypedSupabaseClient,
 } from "@/lib/attendance/client";
 import { setAttendanceDebugState } from "@/lib/attendance/debug-store";
@@ -20,10 +20,10 @@ type Student = {
   schoolId: string;
 };
 
-type ProfileInfo = Pick<
-  Database["public"]["Tables"]["user_profile"]["Row"],
-  "role" | "school_id"
->;
+type ProfileInfo = {
+  role: ExtendedAttendanceRole | null;
+  school_id: string | null;
+};
 
 type EnrollmentWithStudent = {
   school_id: string;
@@ -54,7 +54,7 @@ const STATUS_OPTIONS: { value: AttendanceStatus; label: string; description: str
   { value: "R", label: "R", description: "Retardo" },
 ];
 
-const GUARDIAN_ROLES = new Set<AttendanceRole>(["padre", "madre", "tutor"] as AttendanceRole[]);
+const GUARDIAN_ROLES = new Set<string>(["parent", "padre", "madre", "tutor"]);
 
 type GuardianStudent = {
   id: string;
@@ -94,7 +94,7 @@ export default function AttendancePage() {
   const [recordsLoading, setRecordsLoading] = useState(false);
   const [fatalError, setFatalError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
-  const [role, setRole] = useState<AttendanceRole | null>(null);
+  const [role, setRole] = useState<ExtendedAttendanceRole | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [classrooms, setClassrooms] = useState<AttendanceClassroom[]>([]);
   const [selectedClassroom, setSelectedClassroom] = useState<string | null>(null);
@@ -155,10 +155,11 @@ export default function AttendancePage() {
         setAttendanceDebugState({ role: currentRole, classroomIds: [], childrenIds: [] });
 
         if (currentRole && GUARDIAN_ROLES.has(currentRole)) {
-          const guardianTable = supabase.from("guardian") as any;
-          const { data: links, error: linksError } = await guardianTable
+          const { data: links, error: linksError } = await supabase
+            .from("guardian")
             .select("student_id")
-            .eq("profile_id", user.id);
+            .eq("user_id", user.id)
+            .returns<{ student_id: string }[]>();
           if (linksError) {
             throw linksError;
           }
