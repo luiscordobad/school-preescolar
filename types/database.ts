@@ -12,7 +12,7 @@ export interface Database {
       attendance: {
         Row: {
           classroom_id: string;
-          created_at: string | null;
+          created_at: string;
           date: string;
           id: string;
           note: string | null;
@@ -20,11 +20,11 @@ export interface Database {
           status: "P" | "A" | "R";
           student_id: string;
           taken_by: string;
-          updated_at: string | null;
+          updated_at: string;
         };
         Insert: {
           classroom_id: string;
-          created_at?: string | null;
+          created_at?: string;
           date: string;
           id?: string;
           note?: string | null;
@@ -32,11 +32,11 @@ export interface Database {
           status: "P" | "A" | "R";
           student_id: string;
           taken_by: string;
-          updated_at?: string | null;
+          updated_at?: string;
         };
         Update: {
           classroom_id?: string;
-          created_at?: string | null;
+          created_at?: string;
           date?: string;
           id?: string;
           note?: string | null;
@@ -44,7 +44,7 @@ export interface Database {
           status?: "P" | "A" | "R";
           student_id?: string;
           taken_by?: string;
-          updated_at?: string | null;
+          updated_at?: string;
         };
         Relationships: [
           {
@@ -148,35 +148,35 @@ export interface Database {
         Row: {
           created_at: string | null;
           id: string;
-          profile_id: string;
           relationship: string | null;
           student_id: string;
+          user_id: string;
         };
         Insert: {
           created_at?: string | null;
           id?: string;
-          profile_id: string;
           relationship?: string | null;
           student_id: string;
+          user_id: string;
         };
         Update: {
           created_at?: string | null;
           id?: string;
-          profile_id?: string;
           relationship?: string | null;
           student_id?: string;
+          user_id?: string;
         };
         Relationships: [
-          {
-            foreignKeyName: "guardian_profile_id_fkey";
-            columns: ["profile_id"];
-            referencedRelation: "user_profile";
-            referencedColumns: ["id"];
-          },
           {
             foreignKeyName: "guardian_student_id_fkey";
             columns: ["student_id"];
             referencedRelation: "student";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "guardian_user_id_fkey";
+            columns: ["user_id"];
+            referencedRelation: "user_profile";
             referencedColumns: ["id"];
           }
         ];

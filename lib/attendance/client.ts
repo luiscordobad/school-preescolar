@@ -56,8 +56,10 @@ export async function fetchAccessibleClassrooms(
   // Guardian role
   const { data, error } = await supabase
     .from("guardian")
-    .select("student:student_id (enrollments:enrollment (classroom:classroom_id (id, name)))")
-    .eq("profile_id", userId);
+    .select(
+      "student:student_id (enrollments:enrollment (classroom:classroom_id (id, name)))",
+    )
+    .eq("user_id", userId);
   if (error) {
     throw error;
   }
