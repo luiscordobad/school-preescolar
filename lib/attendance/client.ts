@@ -10,6 +10,9 @@ export type AttendanceClassroom = {
 
 export type TypedSupabaseClient = SupabaseClient<Database>;
 
+const TEACHING_ROLES = new Set(["teacher", "maestra"]);
+const GUARDIAN_ROLES = new Set(["padre", "madre", "tutor", "parent"]);
+
 export async function fetchAccessibleClassrooms(
   supabase: TypedSupabaseClient,
   role: AttendanceRole | null,
@@ -35,7 +38,7 @@ export async function fetchAccessibleClassrooms(
     return data ?? [];
   }
 
-  if (role === "teacher") {
+  if (TEACHING_ROLES.has(role)) {
     const { data, error } = await supabase
       .from("teacher_classroom")
       .select("classroom:classroom_id (id, name)")
@@ -53,13 +56,16 @@ export async function fetchAccessibleClassrooms(
     return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
   }
 
-  // Guardian role
+  if (!GUARDIAN_ROLES.has(role)) {
+    return [];
+  }
+
   const { data, error } = await supabase
     .from("guardian")
     .select(
       "student:student_id (enrollments:enrollment (classroom:classroom_id (id, name)))",
     )
-    .eq("user_id", userId);
+    .eq("profile_id", userId);
   if (error) {
     throw error;
   }

@@ -11,15 +11,20 @@ import {
 } from "@/lib/attendance/client";
 import type { Database } from "@/types/database";
 
-type ProfileInfo = Pick<
-  Database["public"]["Tables"]["user_profile"]["Row"],
-  "role" | "school_id"
->;
+const msg = (e: any) => e?.message || e?.details || e?.hint || JSON.stringify(e ?? {});
+
+type ProfileInfo = Pick<Database["public"]["Tables"]["user_profile"]["Row"], "role" | "school_id">;
 
 type DebugAttendanceRow = Pick<
   Database["public"]["Tables"]["attendance"]["Row"],
   "id" | "student_id" | "classroom_id" | "date" | "status" | "taken_by"
 >;
+
+type GuardianLink = {
+  student_id: string;
+};
+
+const GUARDIAN_ROLES = new Set(["padre", "madre", "tutor", "parent"]);
 
 type DebugState = {
   loading: boolean;
@@ -28,7 +33,10 @@ type DebugState = {
   classroomId: string | null;
   date: string;
   sampleRows: DebugAttendanceRow[] | null;
-  error: string | null;
+  serverError: string | null;
+  childrenIds: string[];
+  selectedStudentId: string | null;
+  lastError: string | null;
 };
 
 export default function DebugAttendancePage() {
@@ -42,13 +50,16 @@ export default function DebugAttendancePage() {
     classroomId: null,
     date: defaultDate,
     sampleRows: null,
-    error: null,
+    serverError: null,
+    childrenIds: [],
+    selectedStudentId: null,
+    lastError: null,
   }));
 
   useEffect(() => {
     let ignore = false;
     async function loadDebug() {
-      setState((prev) => ({ ...prev, loading: true, error: null }));
+      setState((prev) => ({ ...prev, loading: true }));
       try {
         const {
           data: { user },
@@ -61,7 +72,8 @@ export default function DebugAttendancePage() {
         const userId = user?.id ?? null;
         let role: AttendanceRole | null = null;
         let schoolId: string | null = null;
-        let errorMessage: string | null = null;
+        let serverError: string | null = null;
+        let lastError: string | null = null;
 
         if (userId) {
           const { data: profile, error: profileError } = await supabase
@@ -70,7 +82,9 @@ export default function DebugAttendancePage() {
             .eq("id", userId)
             .maybeSingle<ProfileInfo>();
           if (profileError) {
-            errorMessage = profileError.message;
+            const message = msg(profileError);
+            serverError = message;
+            lastError = lastError ?? message;
           } else {
             role = profile?.role ?? null;
             schoolId = profile?.school_id ?? null;
@@ -78,16 +92,24 @@ export default function DebugAttendancePage() {
         }
 
         let classroomId: string | null = null;
-        if (userId && role) {
+        let sampleRows: DebugAttendanceRow[] | null = null;
+
+        if (userId && role && !GUARDIAN_ROLES.has(role)) {
           try {
-            const classrooms = await fetchAccessibleClassrooms(typedSupabase, role, userId, schoolId);
+            const classrooms = await fetchAccessibleClassrooms(
+              typedSupabase,
+              role,
+              userId,
+              schoolId,
+            );
             classroomId = classrooms[0]?.id ?? null;
           } catch (classroomError) {
-            errorMessage = classroomError instanceof Error ? classroomError.message : String(classroomError);
+            const message = msg(classroomError);
+            serverError = serverError ?? message;
+            lastError = lastError ?? message;
           }
         }
 
-        let sampleRows: DebugAttendanceRow[] | null = null;
         if (classroomId) {
           const { data: sampleData, error: sampleError } = await supabase
             .from("attendance")
@@ -97,9 +119,28 @@ export default function DebugAttendancePage() {
             .limit(5)
             .returns<DebugAttendanceRow[]>();
           if (sampleError) {
-            errorMessage = errorMessage ?? sampleError.message;
+            const message = msg(sampleError);
+            serverError = serverError ?? message;
+            lastError = lastError ?? message;
           } else {
             sampleRows = sampleData ?? [];
+          }
+        }
+
+        let childrenIds: string[] = [];
+        let selectedStudentId: string | null = null;
+        if (userId && role && GUARDIAN_ROLES.has(role)) {
+          const { data: links, error: linksError } = await supabase
+            .from("guardian")
+            .select("student_id")
+            .eq("profile_id", userId)
+            .returns<GuardianLink[]>();
+          if (linksError) {
+            const message = msg(linksError);
+            lastError = lastError ?? message;
+          } else {
+            childrenIds = (links ?? []).map((link) => link.student_id);
+            selectedStudentId = childrenIds[0] ?? null;
           }
         }
 
@@ -111,11 +152,14 @@ export default function DebugAttendancePage() {
           classroomId,
           date: defaultDate,
           sampleRows,
-          error: errorMessage,
+          serverError,
+          childrenIds,
+          selectedStudentId,
+          lastError,
         });
-      } catch (err) {
+      } catch (error) {
         if (ignore) return;
-        const message = err instanceof Error ? err.message : String(err);
+        const message = msg(error);
         setState({
           loading: false,
           userId: null,
@@ -123,7 +167,10 @@ export default function DebugAttendancePage() {
           classroomId: null,
           date: defaultDate,
           sampleRows: null,
-          error: message,
+          serverError: message,
+          childrenIds: [],
+          selectedStudentId: null,
+          lastError: message,
         });
       }
     }
@@ -131,7 +178,7 @@ export default function DebugAttendancePage() {
     return () => {
       ignore = true;
     };
-  }, [defaultDate, supabase]);
+  }, [defaultDate, supabase, typedSupabase]);
 
   return (
     <main className="flex flex-1 flex-col gap-6">
@@ -142,15 +189,33 @@ export default function DebugAttendancePage() {
         </p>
       </header>
       <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-        <pre className="whitespace-pre-wrap text-sm text-slate-700">
+        <h2 className="text-lg font-semibold text-slate-800">Estado del cliente</h2>
+        <pre className="mt-4 whitespace-pre-wrap text-sm text-slate-700">
           {JSON.stringify(
             {
+              role: state.role,
+              childrenIds: state.childrenIds,
+              selectedStudentId: state.selectedStudentId,
+              date: state.date,
+              lastError: state.lastError,
+            },
+            null,
+            2,
+          )}
+        </pre>
+      </section>
+      <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+        <h2 className="text-lg font-semibold text-slate-800">Estado del servidor</h2>
+        <pre className="mt-4 whitespace-pre-wrap text-sm text-slate-700">
+          {JSON.stringify(
+            {
+              loading: state.loading,
               userId: state.userId,
               role: state.role,
               classroomId: state.classroomId,
               date: state.date,
               sampleRows: state.sampleRows,
-              error: state.error,
+              error: state.serverError,
             },
             null,
             2,

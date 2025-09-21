@@ -42,7 +42,7 @@ drop policy if exists att_sel_parent on public.attendance;
 create policy att_sel_parent on public.attendance
   for select using (
     exists (select 1 from public.guardian g
-            where g.user_id = auth.uid()
+            where g.profile_id = auth.uid()
               and g.student_id = attendance.student_id)
   );
 -- INSERT / UPDATE (director o maestra asignada)
