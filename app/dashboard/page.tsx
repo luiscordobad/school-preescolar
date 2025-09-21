@@ -1,16 +1,10 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { getMyProfile } from "@/lib/supabase/profile";
 import type { Database } from "@/types/database";
 
 export const dynamic = "force-dynamic";
-
-type DashboardProfile = Pick<
-  Database["public"]["Tables"]["user_profile"]["Row"],
-  "id" | "display_name" | "role"
-> & {
-  school: { name: string } | null;
-};
 
 type DashboardClassroom = Pick<Database["public"]["Tables"]["classroom"]["Row"], "id" | "name">;
 
@@ -33,11 +27,19 @@ export default async function DashboardPage() {
     redirect("/login");
   }
 
-  const { data: profile } = await supabase
-    .from("user_profile")
-    .select("id, display_name, role, school(name)")
-    .eq("id", session.user.id)
-    .maybeSingle<DashboardProfile>();
+  const profile = await getMyProfile(supabase, session.user.id);
+
+  let schoolName: string | null = null;
+
+  if (profile?.school_id) {
+    const { data: school } = await supabase
+      .from("school")
+      .select("name")
+      .eq("id", profile.school_id)
+      .maybeSingle<{ name: string }>();
+
+    schoolName = school?.name ?? null;
+  }
 
   const { data: classrooms } = await supabase
     .from("classroom")
@@ -56,8 +58,8 @@ export default async function DashboardPage() {
       <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
         <h1 className="text-2xl font-semibold">Panel</h1>
         <p className="mt-2 text-sm text-slate-500">
-          Bienvenido{profile?.display_name ? `, ${profile.display_name}` : ""}. Tu rol es <strong>{profile?.role}</strong>
-          {profile?.school?.name ? ` en ${profile.school.name}` : ""}.
+          Bienvenido{profile ? `, ${profile.full_name ?? "(sin nombre)"}` : ""}. Tu rol es <strong>{profile?.role}</strong>
+          {schoolName ? ` en ${schoolName}` : ""}.
         </p>
         <div className="mt-4 flex flex-wrap items-center gap-4">
           <Link href="/role" className="text-sm font-medium text-indigo-600 hover:underline">
