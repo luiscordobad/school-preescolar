@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import type { Database } from "@/types/database";
 import { NewThreadForm } from "../NewThreadForm";
 
 export const dynamic = "force-dynamic";
@@ -7,6 +8,18 @@ export const dynamic = "force-dynamic";
 type ClassroomOption = {
   id: string;
   name: string;
+};
+
+type TeacherClassroomRow = {
+  classroom: ClassroomOption | null;
+};
+
+type GuardianStudentRow = {
+  student_id: string;
+};
+
+type EnrollmentClassroomRow = {
+  classroom: ClassroomOption | null;
 };
 
 type SearchParams = {
@@ -36,7 +49,8 @@ async function getAccessibleClassrooms(
       .from("classroom")
       .select("id, name")
       .eq("school_id", schoolId)
-      .order("name", { ascending: true });
+      .order("name", { ascending: true })
+      .returns<ClassroomOption[]>();
     if (error) {
       throw error;
     }
@@ -47,13 +61,14 @@ async function getAccessibleClassrooms(
     const { data, error } = await supabase
       .from("teacher_classroom")
       .select("classroom:classroom_id (id, name)")
-      .eq("teacher_id", userId);
+      .eq("teacher_id", userId)
+      .returns<TeacherClassroomRow[]>();
     if (error) {
       throw error;
     }
     const map = new Map<string, ClassroomOption>();
     for (const row of data ?? []) {
-      const classroom = row.classroom as { id: string; name: string } | null;
+      const classroom = row.classroom;
       if (classroom) {
         map.set(classroom.id, classroom);
       }
@@ -64,7 +79,8 @@ async function getAccessibleClassrooms(
   const { data, error } = await supabase
     .from("guardian")
     .select("student_id")
-    .eq("user_id", userId);
+    .eq("user_id", userId)
+    .returns<GuardianStudentRow[]>();
   if (error) {
     throw error;
   }
@@ -76,13 +92,14 @@ async function getAccessibleClassrooms(
     .from("enrollment")
     .select("classroom:classroom_id (id, name)")
     .eq("school_id", schoolId)
-    .in("student_id", studentIds);
+    .in("student_id", studentIds)
+    .returns<EnrollmentClassroomRow[]>();
   if (enrollmentError) {
     throw enrollmentError;
   }
   const map = new Map<string, ClassroomOption>();
   for (const row of enrollments ?? []) {
-    const classroom = row.classroom as { id: string; name: string } | null;
+    const classroom = row.classroom;
     if (classroom) {
       map.set(classroom.id, classroom);
     }
@@ -207,14 +224,15 @@ export default async function NewMessagePage({ searchParams }: { searchParams?: 
       redirect(encodeError("Selecciona un tipo de aviso válido."));
     }
 
-    const { data: thread, error: threadError } = await serverClient
-      .from("message_thread")
-      .insert({
-        school_id: currentSchoolId,
-        classroom_id: classroomId,
-        title,
-        created_by: serverSession.user.id,
-      })
+    const threadPayload = {
+      school_id: currentSchoolId,
+      classroom_id: classroomId,
+      title,
+      created_by: serverSession.user.id,
+    } satisfies Database["public"]["Tables"]["message_thread"]["Insert"];
+
+    const { data: thread, error: threadError } = await (serverClient.from("message_thread") as any)
+      .insert(threadPayload)
       .select("id")
       .single();
 
@@ -222,11 +240,13 @@ export default async function NewMessagePage({ searchParams }: { searchParams?: 
       redirect(encodeError("No fue posible crear el aviso."));
     }
 
-    const { error: messageError } = await serverClient.from("message").insert({
+    const initialMessagePayload = {
       thread_id: thread.id,
       sender_id: serverSession.user.id,
       body,
-    });
+    } satisfies Database["public"]["Tables"]["message"]["Insert"];
+
+    const { error: messageError } = await (serverClient.from("message") as any).insert(initialMessagePayload);
 
     if (messageError) {
       redirect(encodeError("El aviso se creó sin mensaje. Intenta nuevamente."));

@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import type { Database } from "@/types/database";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +19,14 @@ type MessageRow = {
   body: string;
   created_at: string;
   sender: { id: string; display_name: string | null; role: string | null } | null;
+};
+
+type GuardianStudentRow = {
+  student_id: string;
+};
+
+type EnrollmentCheckRow = {
+  id: string;
 };
 
 type SearchParams = {
@@ -72,7 +81,8 @@ export default async function MessageThreadPage({
   const { data: guardianRows } = await supabase
     .from("guardian")
     .select("student_id")
-    .eq("user_id", session.user.id);
+    .eq("user_id", session.user.id)
+    .returns<GuardianStudentRow[]>();
 
   let guardianCanPost = false;
   const studentIds = (guardianRows ?? []).map((row) => row.student_id);
@@ -82,7 +92,8 @@ export default async function MessageThreadPage({
       .select("id")
       .eq("classroom_id", thread.classroom_id)
       .in("student_id", studentIds)
-      .limit(1);
+      .limit(1)
+      .returns<EnrollmentCheckRow[]>();
     guardianCanPost = (enrollmentRows ?? []).length > 0;
   }
 
@@ -150,7 +161,8 @@ export default async function MessageThreadPage({
       const { data: serverGuardianRows } = await serverClient
         .from("guardian")
         .select("student_id")
-        .eq("user_id", serverSession.user.id);
+        .eq("user_id", serverSession.user.id)
+        .returns<GuardianStudentRow[]>();
       const guardianStudentIds = (serverGuardianRows ?? []).map((row) => row.student_id);
       if (guardianStudentIds.length) {
         const { data: serverEnrollmentRows } = await serverClient
@@ -158,7 +170,8 @@ export default async function MessageThreadPage({
           .select("id")
           .eq("classroom_id", serverThread.classroom_id)
           .in("student_id", guardianStudentIds)
-          .limit(1);
+          .limit(1)
+          .returns<EnrollmentCheckRow[]>();
         guardianAllowed = (serverEnrollmentRows ?? []).length > 0;
       }
     }
@@ -167,11 +180,13 @@ export default async function MessageThreadPage({
       redirect(`/messages/${params.id}?error=${encodeURIComponent("No puedes responder en este hilo.")}`);
     }
 
-    const { error: insertError } = await serverClient.from("message").insert({
+    const messagePayload = {
       thread_id: serverThread.id,
       sender_id: serverSession.user.id,
       body,
-    });
+    } satisfies Database["public"]["Tables"]["message"]["Insert"];
+
+    const { error: insertError } = await (serverClient.from("message") as any).insert(messagePayload);
 
     if (insertError) {
       redirect(`/messages/${params.id}?error=${encodeURIComponent("No se pudo enviar tu mensaje.")}`);
