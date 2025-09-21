@@ -35,7 +35,7 @@ export async function fetchAccessibleClassrooms(
     return data ?? [];
   }
 
-  if (role === "teacher") {
+  if (role === "teacher" || role === "maestra") {
     const { data, error } = await supabase
       .from("teacher_classroom")
       .select("classroom:classroom_id (id, name)")

@@ -6,7 +6,7 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[];
 
-export interface Database {
+export type Database = {
   public: {
     Tables: {
       attendance: {
@@ -181,6 +181,89 @@ export interface Database {
           }
         ];
       };
+      message: {
+        Row: {
+          body: string;
+          created_at: string;
+          id: string;
+          sender_id: string;
+          thread_id: string;
+        };
+        Insert: {
+          body: string;
+          created_at?: string;
+          id?: string;
+          sender_id: string;
+          thread_id: string;
+        };
+        Update: {
+          body?: string;
+          created_at?: string;
+          id?: string;
+          sender_id?: string;
+          thread_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "message_sender_id_fkey";
+            columns: ["sender_id"];
+            referencedRelation: "user_profile";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "message_thread_id_fkey";
+            columns: ["thread_id"];
+            referencedRelation: "message_thread";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      message_thread: {
+        Row: {
+          classroom_id: string | null;
+          created_at: string;
+          created_by: string;
+          id: string;
+          school_id: string;
+          title: string;
+        };
+        Insert: {
+          classroom_id?: string | null;
+          created_at?: string;
+          created_by: string;
+          id?: string;
+          school_id: string;
+          title: string;
+        };
+        Update: {
+          classroom_id?: string | null;
+          created_at?: string;
+          created_by?: string;
+          id?: string;
+          school_id?: string;
+          title?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "message_thread_classroom_id_fkey";
+            columns: ["classroom_id"];
+            referencedRelation: "classroom";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "message_thread_created_by_fkey";
+            columns: ["created_by"];
+            referencedRelation: "user_profile";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "message_thread_school_id_fkey";
+            columns: ["school_id"];
+            referencedRelation: "school";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
       school: {
         Row: {
           created_at: string | null;
@@ -272,23 +355,23 @@ export interface Database {
           created_at: string | null;
           display_name: string | null;
           id: string;
-          role: "director" | "teacher" | "parent";
+          role: "director" | "teacher" | "parent" | "maestra";
           school_id: string | null;
         };
         Insert: {
           created_at?: string | null;
           display_name?: string | null;
           id: string;
-          role?: "director" | "teacher" | "parent";
+          role?: "director" | "teacher" | "parent" | "maestra";
           school_id?: string | null;
         };
-        Update: {
-          created_at?: string | null;
-          display_name?: string | null;
-          id?: string;
-          role?: "director" | "teacher" | "parent";
-          school_id?: string | null;
-        };
+          Update: {
+            created_at?: string | null;
+            display_name?: string | null;
+            id?: string;
+            role?: "director" | "teacher" | "parent" | "maestra";
+            school_id?: string | null;
+          };
         Relationships: [
           {
             foreignKeyName: "user_profile_school_id_fkey";
@@ -310,4 +393,4 @@ export interface Database {
     Enums: {};
     CompositeTypes: {};
   };
-}
+};
