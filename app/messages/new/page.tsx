@@ -24,6 +24,7 @@ type EnrollmentClassroomRow = {
 
 type SearchParams = {
   error?: string;
+  classroomId?: string;
 };
 
 function encodeError(message: string) {
@@ -150,6 +151,14 @@ export default async function NewMessagePage({ searchParams }: { searchParams?: 
 
   const classrooms = await getAccessibleClassrooms(supabase, role, session.user.id, schoolId);
   const errorMessage = searchParams?.error ?? null;
+  const requestedClassroomId =
+    searchParams && typeof searchParams.classroomId === "string" && searchParams.classroomId
+      ? searchParams.classroomId
+      : null;
+  const preselectedClassroomId = requestedClassroomId && classrooms.some((room) => room.id === requestedClassroomId)
+    ? requestedClassroomId
+    : null;
+  const invalidClassroomRequested = Boolean(requestedClassroomId && !preselectedClassroomId);
   const allowGeneral = role === "director";
 
   async function createThread(formData: FormData) {
@@ -268,11 +277,18 @@ export default async function NewMessagePage({ searchParams }: { searchParams?: 
               No tienes salones asignados actualmente. Comunícate con la dirección si necesitas acceso para publicar avisos.
             </p>
           ) : null}
+          {invalidClassroomRequested ? (
+            <p className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+              El salón seleccionado ya no está disponible. Puedes elegir otro en el formulario.
+            </p>
+          ) : null}
           <NewThreadForm
             classrooms={classrooms}
             action={createThread}
             errorMessage={errorMessage}
             allowGeneral={allowGeneral}
+            defaultType={preselectedClassroomId ? "classroom" : undefined}
+            defaultClassroomId={preselectedClassroomId}
           />
         </div>
       </section>
