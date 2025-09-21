@@ -8,9 +8,10 @@ import type { Database } from "@/types/database";
 import {
   fetchAccessibleClassrooms,
   type AttendanceClassroom,
-  type AttendanceRole,
+  type ExtendedAttendanceRole,
   type TypedSupabaseClient,
 } from "@/lib/attendance/client";
+import { setAttendanceDebugState } from "@/lib/attendance/debug-store";
 
 type Student = {
   id: string;
@@ -19,10 +20,10 @@ type Student = {
   schoolId: string;
 };
 
-type ProfileInfo = Pick<
-  Database["public"]["Tables"]["user_profile"]["Row"],
-  "role" | "school_id"
->;
+type ProfileInfo = {
+  role: ExtendedAttendanceRole | null;
+  school_id: string | null;
+};
 
 type EnrollmentWithStudent = {
   school_id: string;
@@ -53,6 +54,39 @@ const STATUS_OPTIONS: { value: AttendanceStatus; label: string; description: str
   { value: "R", label: "R", description: "Retardo" },
 ];
 
+const GUARDIAN_ROLES = new Set<string>(["parent", "padre", "madre", "tutor"]);
+
+type GuardianStudent = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  fullName: string;
+};
+
+type AttendanceRow = Pick<
+  Database["public"]["Tables"]["attendance"]["Row"],
+  "id" | "status" | "note" | "date" | "classroom_id"
+>;
+
+type WithOptionalError = {
+  message?: string;
+  details?: string;
+  hint?: string;
+};
+
+function extractErrorMessage(error: unknown, fallback: string) {
+  if (error && typeof error === "object") {
+    const candidate = error as WithOptionalError;
+    if (candidate.message) return candidate.message;
+    if (candidate.details) return candidate.details;
+    if (candidate.hint) return candidate.hint;
+  }
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return fallback;
+}
+
 export default function AttendancePage() {
   const supabase = useMemo(() => createClientSupabaseClient(), []);
   const typedSupabase = supabase as unknown as TypedSupabaseClient;
@@ -60,7 +94,7 @@ export default function AttendancePage() {
   const [recordsLoading, setRecordsLoading] = useState(false);
   const [fatalError, setFatalError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
-  const [role, setRole] = useState<AttendanceRole | null>(null);
+  const [role, setRole] = useState<ExtendedAttendanceRole | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [classrooms, setClassrooms] = useState<AttendanceClassroom[]>([]);
   const [selectedClassroom, setSelectedClassroom] = useState<string | null>(null);
@@ -68,8 +102,21 @@ export default function AttendancePage() {
   const [students, setStudents] = useState<Student[]>([]);
   const [attendance, setAttendance] = useState<Record<string, StudentAttendance>>({});
   const [saving, setSaving] = useState(false);
+  const [guardianStudents, setGuardianStudents] = useState<GuardianStudent[]>([]);
+  const [selectedGuardianStudent, setSelectedGuardianStudent] = useState<string | null>(null);
+  const [guardianAttendance, setGuardianAttendance] = useState<AttendanceRow | null>(null);
+  const [lastError, setLastError] = useState<string | null>(null);
 
   const canEdit = role === "director" || role === "teacher";
+  const isGuardian = role ? GUARDIAN_ROLES.has(role) : false;
+
+  useEffect(() => {
+    setAttendanceDebugState({ date });
+  }, [date]);
+
+  useEffect(() => {
+    setAttendanceDebugState({ lastError });
+  }, [lastError]);
 
   useEffect(() => {
     let ignore = false;
@@ -85,7 +132,10 @@ export default function AttendancePage() {
           throw userError;
         }
         if (!user) {
-          setFatalError("Inicia sesión para registrar asistencia.");
+          const message = "Inicia sesión para registrar asistencia.";
+          setFatalError(message);
+          setLastError(message);
+          setAttendanceDebugState({ lastError: message });
           return;
         }
         if (ignore) return;
@@ -102,22 +152,67 @@ export default function AttendancePage() {
         const currentRole = profile?.role ?? null;
         if (ignore) return;
         setRole(currentRole);
+        setAttendanceDebugState({ role: currentRole, classroomIds: [], childrenIds: [] });
 
-        const accessible = await fetchAccessibleClassrooms(
-          typedSupabase,
-          currentRole,
-          user.id,
-          profile?.school_id ?? null,
-        );
-        if (ignore) return;
-        setClassrooms(accessible);
-        if (accessible.length > 0) {
-          setSelectedClassroom(accessible[0].id);
+        if (currentRole && GUARDIAN_ROLES.has(currentRole)) {
+          const { data: links, error: linksError } = await supabase
+            .from("guardian")
+            .select("student_id")
+            .eq("user_id", user.id)
+            .returns<{ student_id: string }[]>();
+          if (linksError) {
+            throw linksError;
+          }
+          const studentIds = (links ?? []).map((entry: { student_id: string }) => entry.student_id).filter(Boolean);
+          const { data: kids, error: kidsError } =
+            studentIds.length > 0
+              ? await supabase
+                  .from("student")
+                  .select("id, first_name, last_name")
+                  .in("id", studentIds)
+                  .returns<{ id: string; first_name: string; last_name: string }[]>()
+              : { data: [], error: null };
+          if (kidsError) {
+            throw kidsError;
+          }
+          if (ignore) return;
+          const formattedKids = (kids ?? [])
+            .map((kid) => ({
+              id: kid.id,
+              firstName: kid.first_name,
+              lastName: kid.last_name,
+              fullName: `${kid.first_name} ${kid.last_name}`.trim(),
+            }))
+            .sort((a, b) => a.fullName.localeCompare(b.fullName, "es", { sensitivity: "base" }));
+          setGuardianStudents(formattedKids);
+          setAttendanceDebugState({
+            childrenIds: formattedKids.map((kid) => kid.id),
+            classroomIds: [],
+          });
+          setSelectedGuardianStudent(formattedKids[0]?.id ?? null);
+        } else {
+          const accessible = await fetchAccessibleClassrooms(
+            typedSupabase,
+            currentRole,
+            user.id,
+            profile?.school_id ?? null,
+          );
+          if (ignore) return;
+          setClassrooms(accessible);
+          setAttendanceDebugState({
+            classroomIds: accessible.map((classroom) => classroom.id),
+            childrenIds: [],
+          });
+          setSelectedClassroom(accessible[0]?.id ?? null);
         }
+        setLastError(null);
+        setAttendanceDebugState({ lastError: null });
       } catch (err) {
         if (ignore) return;
-        const message = err instanceof Error ? err.message : "No fue posible cargar tus datos.";
+        const message = extractErrorMessage(err, "No fue posible cargar tus datos.");
         setFatalError(message);
+        setLastError(message);
+        setAttendanceDebugState({ lastError: message });
       } finally {
         if (!ignore) {
           setInitializing(false);
@@ -128,11 +223,48 @@ export default function AttendancePage() {
     return () => {
       ignore = true;
     };
-  }, [supabase]);
+  }, [supabase, typedSupabase]);
 
   useEffect(() => {
     let ignore = false;
     async function loadAttendance() {
+      if (isGuardian) {
+        if (!selectedGuardianStudent || !date) {
+          setGuardianAttendance(null);
+          return;
+        }
+        setRecordsLoading(true);
+        setFatalError(null);
+        setFormError(null);
+        setLastError(null);
+        try {
+          const { data, error } = await supabase
+            .from("attendance")
+            .select("id, status, note, date, classroom_id")
+            .eq("student_id", selectedGuardianStudent)
+            .eq("date", date)
+            .maybeSingle<AttendanceRow>();
+          if (error) {
+            throw error;
+          }
+          if (ignore) return;
+          setGuardianAttendance(data ?? null);
+          setLastError(null);
+          setAttendanceDebugState({ lastError: null });
+        } catch (err) {
+          if (ignore) return;
+          const message = extractErrorMessage(err, "No fue posible cargar la asistencia.");
+          setFatalError(message);
+          setLastError(message);
+          setAttendanceDebugState({ lastError: message });
+        } finally {
+          if (!ignore) {
+            setRecordsLoading(false);
+          }
+        }
+        return;
+      }
+
       if (!selectedClassroom || !date) {
         setStudents([]);
         setAttendance({});
@@ -141,6 +273,7 @@ export default function AttendancePage() {
       setRecordsLoading(true);
       setFatalError(null);
       setFormError(null);
+      setLastError(null);
       try {
         const { data: enrollmentData, error: enrollmentError } = await supabase
           .from("enrollment")
@@ -191,10 +324,14 @@ export default function AttendancePage() {
           };
         }
         setAttendance(map);
+        setLastError(null);
+        setAttendanceDebugState({ lastError: null });
       } catch (err) {
         if (ignore) return;
-        const message = err instanceof Error ? err.message : "No fue posible cargar la asistencia.";
+        const message = extractErrorMessage(err, "No fue posible cargar la asistencia.");
         setFatalError(message);
+        setLastError(message);
+        setAttendanceDebugState({ lastError: message });
       } finally {
         if (!ignore) {
           setRecordsLoading(false);
@@ -205,9 +342,12 @@ export default function AttendancePage() {
     return () => {
       ignore = true;
     };
-  }, [date, selectedClassroom, supabase]);
+  }, [date, isGuardian, selectedClassroom, selectedGuardianStudent, supabase]);
 
   const summary = useMemo(() => {
+    if (isGuardian) {
+      return { P: 0, A: 0, R: 0 } as Record<AttendanceStatus, number>;
+    }
     return students.reduce(
       (acc, student) => {
         const record = attendance[student.id];
@@ -218,7 +358,7 @@ export default function AttendancePage() {
       },
       { P: 0, A: 0, R: 0 } as Record<AttendanceStatus, number>,
     );
-  }, [attendance, students]);
+  }, [attendance, isGuardian, students]);
 
   const handleStatusChange = (studentId: string, status: AttendanceStatus) => {
     if (!canEdit) return;
@@ -301,9 +441,13 @@ export default function AttendancePage() {
         };
       }
       setAttendance(map);
+      setLastError(null);
+      setAttendanceDebugState({ lastError: null });
     } catch (err) {
-      const message = err instanceof Error ? err.message : "No se pudo guardar la asistencia.";
+      const message = extractErrorMessage(err, "No se pudo guardar la asistencia.");
       setFormError(message);
+      setLastError(message);
+      setAttendanceDebugState({ lastError: message });
     } finally {
       setSaving(false);
     }
@@ -337,6 +481,71 @@ export default function AttendancePage() {
     URL.revokeObjectURL(url);
   };
 
+  const renderGuardianContent = () => {
+    if (guardianStudents.length === 0) {
+      return (
+        <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+          <p className="text-sm text-slate-600">
+            No se encontraron hijos vinculados a tu cuenta. Si crees que es un error, contacta a la dirección.
+          </p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-6">
+        <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+            <div className="flex flex-col gap-2 md:flex-row md:items-end">
+              <label className="flex flex-col text-sm text-slate-600">
+                Alumno
+                <select
+                  className="mt-1 rounded-md border border-slate-300 px-3 py-2 text-base focus:border-slate-500 focus:outline-none"
+                  value={selectedGuardianStudent ?? ""}
+                  onChange={(event) => setSelectedGuardianStudent(event.target.value)}
+                >
+                  {guardianStudents.map((student) => (
+                    <option key={student.id} value={student.id}>
+                      {student.fullName}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex flex-col text-sm text-slate-600">
+                Fecha
+                <input
+                  type="date"
+                  className="mt-1 rounded-md border border-slate-300 px-3 py-2 text-base focus:border-slate-500 focus:outline-none"
+                  value={date}
+                  onChange={(event) => setDate(event.target.value)}
+                />
+              </label>
+            </div>
+          </div>
+        </section>
+
+        <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+          {recordsLoading ? (
+            <p className="text-sm text-slate-500">Cargando asistencia...</p>
+          ) : guardianAttendance ? (
+            <div className="space-y-2 text-sm text-slate-700">
+              <p>
+                Estado: <span className="font-semibold">{guardianAttendance.status ?? ""}</span>
+              </p>
+              {guardianAttendance.note ? (
+                <p>
+                  Nota: <span>{guardianAttendance.note}</span>
+                </p>
+              ) : null}
+            </div>
+          ) : (
+            <p className="text-sm text-slate-600">Sin registro para esta fecha.</p>
+          )}
+        </section>
+      </div>
+    );
+  };
+
   const renderContent = () => {
     if (initializing) {
       return (
@@ -352,6 +561,10 @@ export default function AttendancePage() {
           {fatalError}
         </div>
       );
+    }
+
+    if (isGuardian) {
+      return renderGuardianContent();
     }
 
     if (classrooms.length === 0) {
@@ -494,9 +707,15 @@ export default function AttendancePage() {
     <main className="flex flex-1 flex-col gap-6">
       <header className="space-y-2">
         <h1 className="text-2xl font-semibold text-slate-900">Asistencia diaria</h1>
-        <p className="text-sm text-slate-600">
-          Marca la asistencia del salón seleccionado y agrega notas relevantes. Los cambios quedan registrados con tu usuario.
-        </p>
+        {isGuardian ? (
+          <p className="text-sm text-slate-600">
+            Consulta el registro de asistencia diario de tus hijos. Esta información es de solo lectura.
+          </p>
+        ) : (
+          <p className="text-sm text-slate-600">
+            Marca la asistencia del salón seleccionado y agrega notas relevantes. Los cambios quedan registrados con tu usuario.
+          </p>
+        )}
       </header>
       {renderContent()}
     </main>

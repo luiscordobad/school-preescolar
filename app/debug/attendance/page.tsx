@@ -2,19 +2,24 @@
 
 export const dynamic = "force-dynamic";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { createClientSupabaseClient } from "@/lib/supabase/client";
 import {
   fetchAccessibleClassrooms,
-  type AttendanceRole,
+  type AttendanceClassroom,
+  type ExtendedAttendanceRole,
   type TypedSupabaseClient,
 } from "@/lib/attendance/client";
+import {
+  getAttendanceDebugState,
+  subscribeAttendanceDebugState,
+} from "@/lib/attendance/debug-store";
 import type { Database } from "@/types/database";
 
-type ProfileInfo = Pick<
-  Database["public"]["Tables"]["user_profile"]["Row"],
-  "role" | "school_id"
->;
+type ProfileInfo = {
+  role: ExtendedAttendanceRole | null;
+  school_id: string | null;
+};
 
 type DebugAttendanceRow = Pick<
   Database["public"]["Tables"]["attendance"]["Row"],
@@ -24,32 +29,36 @@ type DebugAttendanceRow = Pick<
 type DebugState = {
   loading: boolean;
   userId: string | null;
-  role: AttendanceRole | null;
-  classroomId: string | null;
-  date: string;
-  sampleRows: DebugAttendanceRow[] | null;
+  role: ExtendedAttendanceRole | null;
+  classroomsDisponibles: AttendanceClassroom[];
+  sampleQuery: DebugAttendanceRow[] | null;
   error: string | null;
+};
+
+const initialState: DebugState = {
+  loading: true,
+  userId: null,
+  role: null,
+  classroomsDisponibles: [],
+  sampleQuery: null,
+  error: null,
 };
 
 export default function DebugAttendancePage() {
   const supabase = useMemo(() => createClientSupabaseClient(), []);
   const typedSupabase = supabase as unknown as TypedSupabaseClient;
-  const defaultDate = useMemo(() => new Date().toISOString().slice(0, 10), []);
-  const [state, setState] = useState<DebugState>(() => ({
-    loading: true,
-    userId: null,
-    role: null,
-    classroomId: null,
-    date: defaultDate,
-    sampleRows: null,
-    error: null,
-  }));
+  const [state, setState] = useState<DebugState>(initialState);
+  const realtimeState = useSyncExternalStore(
+    subscribeAttendanceDebugState,
+    getAttendanceDebugState,
+    getAttendanceDebugState,
+  );
 
   useEffect(() => {
     let ignore = false;
     async function loadDebug() {
-      setState((prev) => ({ ...prev, loading: true, error: null }));
       try {
+        setState(initialState);
         const {
           data: { user },
           error: userError,
@@ -59,7 +68,7 @@ export default function DebugAttendancePage() {
         }
         if (ignore) return;
         const userId = user?.id ?? null;
-        let role: AttendanceRole | null = null;
+        let role: ExtendedAttendanceRole | null = null;
         let schoolId: string | null = null;
         let errorMessage: string | null = null;
 
@@ -77,30 +86,22 @@ export default function DebugAttendancePage() {
           }
         }
 
-        let classroomId: string | null = null;
+        let classrooms: AttendanceClassroom[] = [];
         if (userId && role) {
           try {
-            const classrooms = await fetchAccessibleClassrooms(typedSupabase, role, userId, schoolId);
-            classroomId = classrooms[0]?.id ?? null;
+            classrooms = await fetchAccessibleClassrooms(typedSupabase, role, userId, schoolId);
           } catch (classroomError) {
             errorMessage = classroomError instanceof Error ? classroomError.message : String(classroomError);
           }
         }
 
-        let sampleRows: DebugAttendanceRow[] | null = null;
-        if (classroomId) {
-          const { data: sampleData, error: sampleError } = await supabase
-            .from("attendance")
-            .select("id, student_id, classroom_id, date, status, taken_by")
-            .eq("classroom_id", classroomId)
-            .eq("date", defaultDate)
-            .limit(5)
-            .returns<DebugAttendanceRow[]>();
-          if (sampleError) {
-            errorMessage = errorMessage ?? sampleError.message;
-          } else {
-            sampleRows = sampleData ?? [];
-          }
+        const { data: sampleData, error: sampleError } = await supabase
+          .from("attendance")
+          .select("id, student_id, classroom_id, date, status, taken_by")
+          .limit(5)
+          .returns<DebugAttendanceRow[]>();
+        if (sampleError && !errorMessage) {
+          errorMessage = sampleError.message;
         }
 
         if (ignore) return;
@@ -108,9 +109,8 @@ export default function DebugAttendancePage() {
           loading: false,
           userId,
           role,
-          classroomId,
-          date: defaultDate,
-          sampleRows,
+          classroomsDisponibles: classrooms,
+          sampleQuery: sampleData ?? null,
           error: errorMessage,
         });
       } catch (err) {
@@ -120,9 +120,8 @@ export default function DebugAttendancePage() {
           loading: false,
           userId: null,
           role: null,
-          classroomId: null,
-          date: defaultDate,
-          sampleRows: null,
+          classroomsDisponibles: [],
+          sampleQuery: null,
           error: message,
         });
       }
@@ -131,26 +130,41 @@ export default function DebugAttendancePage() {
     return () => {
       ignore = true;
     };
-  }, [defaultDate, supabase]);
+  }, [supabase, typedSupabase]);
+
+  const payload: Record<string, unknown> = {
+    role: realtimeState.role,
+    childrenIds: realtimeState.childrenIds,
+    classroomIds: realtimeState.classroomIds,
+    date: realtimeState.date,
+    lastError: realtimeState.lastError,
+  };
 
   return (
     <main className="flex flex-1 flex-col gap-6">
       <header>
         <h1 className="text-2xl font-semibold text-slate-900">Debug asistencia</h1>
         <p className="text-sm text-slate-600">
-          Información útil para revisar el alcance de las políticas RLS en la tabla de asistencia.
+          Información útil para revisar el alcance de las políticas RLS y el estado del cliente de asistencia.
         </p>
       </header>
       <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+        <h2 className="mb-3 text-base font-semibold text-slate-800">Estado del cliente</h2>
+        <pre className="whitespace-pre-wrap text-sm text-slate-700">
+          {JSON.stringify(payload, null, 2)}
+        </pre>
+      </section>
+      <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+        <h2 className="mb-3 text-base font-semibold text-slate-800">Estado del servidor</h2>
         <pre className="whitespace-pre-wrap text-sm text-slate-700">
           {JSON.stringify(
             {
               userId: state.userId,
               role: state.role,
-              classroomId: state.classroomId,
-              date: state.date,
-              sampleRows: state.sampleRows,
+              classroomsDisponibles: state.classroomsDisponibles,
+              sampleQuery: state.sampleQuery,
               error: state.error,
+              loading: state.loading,
             },
             null,
             2,

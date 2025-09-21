@@ -2,6 +2,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database";
 
 export type AttendanceRole = Database["public"]["Tables"]["user_profile"]["Row"]["role"];
+export type GuardianAttendanceRole = "padre" | "madre" | "tutor";
+export type ExtendedAttendanceRole = AttendanceRole | GuardianAttendanceRole;
 
 export type AttendanceClassroom = {
   id: string;
@@ -12,7 +14,7 @@ export type TypedSupabaseClient = SupabaseClient<Database>;
 
 export async function fetchAccessibleClassrooms(
   supabase: TypedSupabaseClient,
-  role: AttendanceRole | null,
+  role: ExtendedAttendanceRole | null,
   userId: string,
   schoolId: string | null
 ): Promise<AttendanceClassroom[]> {
