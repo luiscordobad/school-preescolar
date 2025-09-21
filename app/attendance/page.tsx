@@ -128,7 +128,7 @@ export default function AttendancePage() {
     return () => {
       ignore = true;
     };
-  }, [supabase]);
+  }, [supabase, typedSupabase]);
 
   useEffect(() => {
     let ignore = false;

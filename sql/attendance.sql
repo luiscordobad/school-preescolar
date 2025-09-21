@@ -78,3 +78,30 @@ create policy att_del_dir on public.attendance
     exists (select 1 from public.user_profile me
             where me.id = auth.uid() and me.role='director' and me.school_id = attendance.school_id)
   );
+
+drop view if exists public.v_attendance_day_classroom;
+create or replace view public.v_attendance_day_classroom as
+select
+  classroom_id,
+  date,
+  count(*) filter (where status = 'P') as present_count,
+  count(*) filter (where status = 'A') as absent_count,
+  count(*) filter (where status = 'R') as tardy_count
+from public.attendance
+group by classroom_id, date;
+
+drop view if exists public.v_attendance_month_student;
+create or replace view public.v_attendance_month_student as
+select
+  student_id,
+  date_trunc('month', date)::date as month,
+  count(*) filter (where status = 'P') as present_count,
+  count(*) filter (where status = 'A') as absent_count,
+  count(*) filter (where status = 'R') as tardy_count,
+  count(*) as total_days,
+  case
+    when count(*) = 0 then null
+    else round(count(*) filter (where status = 'P')::numeric / nullif(count(*), 0)::numeric * 100, 2)
+  end as attendance_percentage
+from public.attendance
+group by student_id, date_trunc('month', date);

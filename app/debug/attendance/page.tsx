@@ -131,7 +131,7 @@ export default function DebugAttendancePage() {
     return () => {
       ignore = true;
     };
-  }, [defaultDate, supabase]);
+  }, [defaultDate, supabase, typedSupabase]);
 
   return (
     <main className="flex flex-1 flex-col gap-6">
