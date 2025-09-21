@@ -8,8 +8,9 @@ type ThreadListItem = {
   id: string;
   title: string;
   created_at: string;
-  classroom: { name: string } | null;
-  messages: { body: string; created_at: string }[] | null;
+  classroom_id: string | null;
+  classroom: { id: string; name: string } | null;
+  messages: { id: string; body: string; created_at: string }[] | null;
 };
 
 function formatDate(value: string) {
@@ -29,13 +30,23 @@ export default async function MessagesPage() {
     redirect("/login");
   }
 
-  const { data: threads } = await supabase
+  const baseSelect =
+    "id,title,classroom_id,created_at," +
+    "classroom:classroom_id(id,name)," +
+    "messages:message(id,body,created_at)";
+
+  let query = supabase
     .from("message_thread")
-    .select(
-      "id, title, created_at, classroom:classroom_id(name), messages:message(order=created_at.desc,limit=1)(body, created_at)",
-    )
-    .order("created_at", { ascending: false })
-    .returns<ThreadListItem[]>();
+    .select(baseSelect)
+    .order("created_at", { ascending: false });
+
+  query = query
+    .order("created_at", { foreignTable: "messages", ascending: false })
+    .limit(1, { foreignTable: "messages" });
+
+  const { data, error } = await query.returns<ThreadListItem[]>();
+  const threads = data ?? [];
+  const errorMessage = error?.message ?? error?.details ?? error?.hint ?? null;
 
   return (
     <main className="flex flex-1 flex-col gap-6">
@@ -59,8 +70,13 @@ export default async function MessagesPage() {
         <p className="mt-2 text-sm text-slate-500">
           Solo se muestran los hilos que puedes ver según tus permisos.
         </p>
+        {errorMessage ? (
+          <p className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+            {errorMessage}
+          </p>
+        ) : null}
         <ul className="mt-4 space-y-3">
-          {threads?.length ? (
+          {threads.length ? (
             threads.map((thread) => {
               const lastMessage = thread.messages?.[0] ?? null;
               return (
