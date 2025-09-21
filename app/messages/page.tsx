@@ -224,7 +224,7 @@ async function fetchThreads(
           }
           return result.data ?? [];
         });
-      queries.push(generalPromise);
+      queries.push(Promise.resolve(generalPromise));
     }
 
     const isDirector = role === "director";
@@ -244,7 +244,7 @@ async function fetchThreads(
           }
           return result.data ?? [];
         });
-      queries.push(classPromise);
+      queries.push(Promise.resolve(classPromise));
     } else if (isTeacherRole(role)) {
       const { data: teacherClassrooms, error: teacherError } = await supabase
         .from("teacher_classroom")
@@ -271,7 +271,7 @@ async function fetchThreads(
             }
             return result.data ?? [];
           });
-        queries.push(classPromise);
+        queries.push(Promise.resolve(classPromise));
       }
     } else {
       const { data: guardianLinks, error: guardianError } = await supabase
@@ -309,7 +309,7 @@ async function fetchThreads(
               }
               return result.data ?? [];
             });
-          queries.push(classPromise);
+          queries.push(Promise.resolve(classPromise));
         }
       }
     }
